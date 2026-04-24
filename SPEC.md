@@ -6,11 +6,11 @@
 
 ## Integrantes da dupla
 
-- **Aluno 1 - Nome**: <mark>`<preencher>`</mark>
-- **Aluno 1 - Cartão UFRGS**: <mark>`<preencher>`</mark>
+- **Aluno 1 - Nome**: <mark>`Vinícius Gross Castro`</mark>
+- **Aluno 1 - Cartão UFRGS**: <mark>`00324541`</mark>
 
-- **Aluno 2 - Nome**: <mark>`<preencher>`</mark>
-- **Aluno 2 - Cartão UFRGS**: <mark>`<preencher>`</mark>
+- **Aluno 2 - Nome**: <mark>`João Vitor de Medeiros`</mark>
+- **Aluno 2 - Cartão UFRGS**: <mark>`00270044`</mark>
 
 ## Detalhes do que será implementado
 
@@ -34,7 +34,7 @@
 >   do próprio repositório. Mas, garanta que qualquer um tenha
 >   permissão de acesso ao vídeo através deste link.
 
-<mark>`<preencher>`</mark>
+<mark>`https://youtu.be/taVGJVSn1-g`</mark>
 
 ### Vídeo - Timestamp
 
@@ -43,8 +43,8 @@
 >   será a base de comparação para avaliar se o seu trabalho final
 >   conseguiu ou não reproduzir a referência.
 
-- **Timestamp inicial**: <mark>`<preencher>`</mark>
-- **Timestamp final**: <mark>`<preencher>`</mark>
+- **Timestamp inicial**: <mark>`[1:05](https://youtu.be/taVGJVSn1-g?t=65)`</mark>
+- **Timestamp final**: <mark>`[1:40](https://youtu.be/taVGJVSn1-g)`</mark>
 
 ### Imagens
 
@@ -52,7 +52,10 @@
 > - Coloque aqui **três imagens** capturadas do vídeo acima, que você
 >   irá usar como ilustração para as explicações que vêm abaixo.
 
-<mark>`<preencher>`</mark>
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/97263788-276a-4f02-b4f7-0799003b0d69" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/e4888bd9-384e-4edd-a955-7f511e749731" />
+<img width="1401" height="1029" alt="image" src="https://github.com/user-attachments/assets/df10ce67-6382-4c88-af45-ffcc7671772d" />
+
 
 ## Especificação textual
 
