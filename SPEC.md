@@ -34,7 +34,7 @@
 >   do próprio repositório. Mas, garanta que qualquer um tenha
 >   permissão de acesso ao vídeo através deste link.
 
-<mark>`https://youtu.be/taVGJVSn1-g`</mark>
+<mark>`https://www.youtube.com/watch?v=aYYn4R52tXs`</mark>
 
 ### Vídeo - Timestamp
 
@@ -43,8 +43,8 @@
 >   será a base de comparação para avaliar se o seu trabalho final
 >   conseguiu ou não reproduzir a referência.
 
-- **Timestamp inicial**: <mark>`[1:05](https://youtu.be/taVGJVSn1-g?t=65)`</mark>
-- **Timestamp final**: <mark>`[1:40](https://youtu.be/taVGJVSn1-g?t=100)`</mark>
+- **Timestamp inicial**: <mark>`0:38`</mark>
+- **Timestamp final**: <mark>`1:08`</mark>
 
 ### Imagens
 
@@ -52,9 +52,10 @@
 > - Coloque aqui **três imagens** capturadas do vídeo acima, que você
 >   irá usar como ilustração para as explicações que vêm abaixo.
 
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/e4888bd9-384e-4edd-a955-7f511e749731" />
-<img width="1401" height="1029" alt="image" src="https://github.com/user-attachments/assets/df10ce67-6382-4c88-af45-ffcc7671772d" />
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/258f4ddb-0724-4d05-80ab-de6e8d3ec50c" />
+<img width="1263" height="710" alt="image" src="https://github.com/user-attachments/assets/d7432df8-8146-4759-a9d8-ccee53b5da32" />
+<img width="1256" height="708" alt="image" src="https://github.com/user-attachments/assets/fad15b61-1cf4-460f-889c-b83eb53115e2" />
+<img width="1263" height="701" alt="image" src="https://github.com/user-attachments/assets/0668a33a-c3b7-42d3-93ee-e7a67f539ad0" />
+
 
 
 
