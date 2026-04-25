@@ -44,7 +44,7 @@
 >   conseguiu ou não reproduzir a referência.
 
 - **Timestamp inicial**: <mark>`[1:05](https://youtu.be/taVGJVSn1-g?t=65)`</mark>
-- **Timestamp final**: <mark>`[1:40](https://youtu.be/taVGJVSn1-g)`</mark>
+- **Timestamp final**: <mark>`[1:40](https://youtu.be/taVGJVSn1-g?t=100)`</mark>
 
 ### Imagens
 
