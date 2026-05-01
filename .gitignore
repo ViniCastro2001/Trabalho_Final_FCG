@@ -1,2 +1,8 @@
-bin
-build
+build/
+bin/
+.vscode/
+
+*.exe
+*.ilk
+*.pdb
+*.log
