@@ -52,6 +52,7 @@
 
 //headers do jogo
 #include "camera.h"
+#include "player.h"
 
 
 // Estrutura que representa um modelo geométrico carregado a partir de um
@@ -235,6 +236,7 @@ GLuint g_NumLoadedTextures = 0;
 
 // Câmera em primeira pessoa 
 Camera g_Camera;
+Player g_Player(&g_Camera);
 
 
 
@@ -346,8 +348,15 @@ int main(int argc, char* argv[])
     glFrontFace(GL_CCW);
 
     // Ficamos em um loop infinito, renderizando, até que o usuário feche a janela
+    float prev_time = (float)glfwGetTime();
     while (!glfwWindowShouldClose(window))
     {
+        float current_time = (float)glfwGetTime();
+        float delta_t = current_time - prev_time;
+        prev_time = current_time;
+
+        g_Player.Update(window, delta_t);
+
         // Aqui executamos as operações de renderização
 
         // Definimos a cor do "fundo" do framebuffer como branco.  Tal cor é

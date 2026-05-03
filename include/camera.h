@@ -21,6 +21,9 @@ public:
     void AddYaw(float delta);
     void AddPitch(float delta);
 
+    // Move a posição da câmera na direção dada, escalada pela velocidade
+    void Move(glm::vec4 direction, float speed);
+
 private:
     // Atualiza o vetor de visão com base nos ângulos yaw e pitch
     void UpdateViewVector();

@@ -70,6 +70,11 @@ void Camera::AddPitch(float delta)
     UpdateViewVector();
 }
 
+void Camera::Move(glm::vec4 direction, float speed)
+{
+    position += direction * speed;
+}
+
 // Converte yaw/pitch para um vetor de direção em 3D.
 // Esse vetor será usado depois pela Matrix_Camera_View().
 void Camera::UpdateViewVector()
