@@ -85,6 +85,8 @@ Os testes de intersecção impedirão que o jogador atravesse edifícios, cercas
 
 Os objetos da cena serão renderizados com iluminação não trivial, com o objetivo de reproduzir o ambiente noturno do jogo. A cena terá iluminação baixa, provida, a princípio, por um ponto único que atuará como iluminação global.
 
+> Comentário Professor: o jogo orignal é bastante "escuro", o que dificulta ver os detalhes visuais. Sugir também implementarem um modo "dia" do jogo, onde a iluminação fica como se fosse um dia de sol, para conseguir ver melhor os detalhes do jogo (principalmente para a apresentação final).
+
 ### Mapeamento de texturas em todos os objetos
 
 Cada objeto terá sua própria textura. Em caso de modelos como o Pé Grande, a arma, etc, a textura será definida pelo modelo do objeto. Casos como árvores, estradas, edifícios, serão usadas imagens de textura, como grama, asfalto, tijolo, concreto, etc, mantendo o estilo parecido com o que foi mostrado no vídeo, mas ao mesmo tempo procurando reproduzir o cenário proposto.
