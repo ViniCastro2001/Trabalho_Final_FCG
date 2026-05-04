@@ -330,6 +330,10 @@ int main(int argc, char* argv[])
     ComputeNormals(&planemodel);
     BuildTrianglesAndAddToVirtualScene(&planemodel);
 
+    ObjModel cubemodel("../../data/models/cube.obj");
+    ComputeNormals(&cubemodel);
+    BuildTrianglesAndAddToVirtualScene(&cubemodel);
+
     if ( argc > 1 )
     {
         ObjModel model(argv[1]);
@@ -390,7 +394,7 @@ int main(int argc, char* argv[])
         // Note que, no sistema de coordenadas da câmera, os planos near e far
         // estão no sentido negativo! Veja slides 176-204 do documento Aula_09_Projecoes.pdf.
         float nearplane = -0.1f;  // Posição do "near plane"
-        float farplane  = -10.0f; // Posição do "far plane"
+        float farplane  = -100.0f; // Posição do "far plane"
 
         if (g_UsePerspectiveProjection)
         {
@@ -424,7 +428,9 @@ int main(int argc, char* argv[])
         #define SPHERE 0
         #define BUNNY  1
         #define PLANE  2
+        #define CUBE   3
 
+/*
         // Desenhamos o modelo da esfera
         model = Matrix_Translate(-1.0f,0.0f,0.0f)
               * Matrix_Rotate_Z(0.6f)
@@ -434,18 +440,65 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, SPHERE);
         DrawVirtualObject("the_sphere");
 
+
         // Desenhamos o modelo do coelho
         model = Matrix_Translate(1.0f,0.0f,0.0f)
               * Matrix_Rotate_X(g_AngleX + (float)glfwGetTime() * 0.1f);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, BUNNY);
         DrawVirtualObject("the_bunny");
+*/
 
-        // Desenhamos o plano do chão
-        model = Matrix_Translate(0.0f,-1.1f,0.0f);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        // Desenhamos um chão maior para testar navegação em primeira pessoa.
+        model = Matrix_Translate(0.0f, -1.1f, 0.0f)
+            * Matrix_Scale(20.0f, 1.0f, 20.0f);
+
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLANE);
         DrawVirtualObject("the_plane");
+
+
+        // Bloco placeholder 1
+        model = Matrix_Translate(0.0f, 0.15f, -5.0f)
+        * Matrix_Scale(3.0f, 2.5f, 1.0f);
+
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, PLANE);
+        DrawVirtualObject("the_cube");
+
+        // Bloco placeholder 2
+        model = Matrix_Translate(-4.0f, 0.4f, -2.0f)
+        * Matrix_Scale(1.5f, 3.0f, 3.0f);
+
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, PLANE);
+        DrawVirtualObject("the_cube");
+
+        // Bloco placeholder 3
+        model = Matrix_Translate(4.0f, -0.1f, -2.0f)
+        * Matrix_Scale(1.5f, 2.0f, 3.0f);
+
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, PLANE);
+        DrawVirtualObject("the_cube");
+
+        // Bloco placeholder 4
+        model = Matrix_Translate(0.0f, 0.65f, -9.0f)
+        * Matrix_Scale(8.0f, 3.5f, 1.0f);
+
+        // Bloco placeholder 5, mais baixo.
+        // A ideia é testar depois uma situação onde a câmera consegue enxergar por cima,
+        // mas o corpo do jogador ainda deve colidir com o obstáculo.
+        model = Matrix_Translate(0.0f, -0.6f, -1.5f)
+            * Matrix_Scale(2.5f, 1.0f, 0.8f);
+
+glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+glUniform1i(g_object_id_uniform, PLANE);
+DrawVirtualObject("the_cube");
+
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, PLANE);
+        DrawVirtualObject("the_cube");
 
         // Imprimimos na tela os ângulos de Euler que controlam a rotação do
         // terceiro cubo.
