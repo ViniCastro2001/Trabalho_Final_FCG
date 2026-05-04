@@ -70,9 +70,12 @@ void Camera::AddPitch(float delta)
     UpdateViewVector();
 }
 
-void Camera::Move(glm::vec4 direction, float speed)
+void Camera::Move(glm::vec4 direction, float amount)
 {
-    position += direction * speed;
+    position += direction * amount;
+
+    // Garantimos que position continua sendo um ponto em coordenadas homogêneas.
+    position.w = 1.0f;
 }
 
 // Converte yaw/pitch para um vetor de direção em 3D.
