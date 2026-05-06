@@ -48,6 +48,7 @@
 // Headers locais, definidos na pasta "include/"
 #include "utils.h"
 #include "matrices.h"
+#include "scene.h"
 
 
 //headers do jogo
@@ -450,13 +451,28 @@ int main(int argc, char* argv[])
 */
 
         // Desenhamos um chão maior para testar navegação em primeira pessoa.
-        model = Matrix_Translate(0.0f, -1.1f, 0.0f)
-            * Matrix_Scale(20.0f, 1.0f, 20.0f);
+        model = Matrix_Scale(20.0f, 1.0f, 20.0f);
 
         glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLANE);
         DrawVirtualObject("the_plane");
 
+
+        // Desenhamos os blocos retangulares do cenário.
+        // A mesma lista será usada depois para colisão.
+        const std::vector<BoxObstacle>& obstacles = GetSceneObstacles();
+
+        for (const BoxObstacle& obstacle : obstacles)
+        {
+            model = Matrix_Translate(obstacle.center.x, obstacle.center.y, obstacle.center.z)
+                * Matrix_Scale(obstacle.size.x, obstacle.size.y, obstacle.size.z);
+
+            glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+            glUniform1i(g_object_id_uniform, PLANE);
+            DrawVirtualObject("the_cube");
+        }
+
+/*
 
         // Bloco placeholder 1
         model = Matrix_Translate(0.0f, 0.15f, -5.0f)
@@ -486,11 +502,15 @@ int main(int argc, char* argv[])
         model = Matrix_Translate(0.0f, 0.65f, -9.0f)
         * Matrix_Scale(8.0f, 3.5f, 1.0f);
 
+
+
         // Bloco placeholder 5, mais baixo.
         // A ideia é testar depois uma situação onde a câmera consegue enxergar por cima,
         // mas o corpo do jogador ainda deve colidir com o obstáculo.
         model = Matrix_Translate(0.0f, -0.6f, -1.5f)
             * Matrix_Scale(2.5f, 1.0f, 0.8f);
+
+*/
 
 glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
 glUniform1i(g_object_id_uniform, PLANE);

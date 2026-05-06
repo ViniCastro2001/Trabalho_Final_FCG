@@ -8,7 +8,7 @@ Camera::Camera()
     // y -> Altura inicial da câmera/jogador. A não ser que venhamos a implementar pulo, subidas ou descidas, não tem porque mudar
     // z -> usamos 3.5f por ser a distância inicial da câmera no template
     // w -> câmera possui posição no mundo -> w = 1.0f
-    position = glm::vec4(0.0f, 0.6f, 3.5f, 1.0f);
+    position = glm::vec4(0.0f, 1.7f, 3.5f, 1.0f);
 
     // up_vector -> aponta para o "céu" da cena.
     // Como o eixo Y é o eixo vertical do mundo, usamos (0, 1, 0).
