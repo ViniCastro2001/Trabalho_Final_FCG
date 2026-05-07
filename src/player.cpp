@@ -1,11 +1,31 @@
 #include "player.h"
 
 #include <cmath>
+#include <vector>
 
 #include "collisions.h"
 #include "scene.h"
 
 Player::Player(Camera* camera) : camera(camera) {}
+
+static bool CollidesWithScene(glm::vec4 position, float player_radius)
+{
+    const std::vector<BoxObstacle>& obstacles = GetSceneObstacles();
+
+    for (const BoxObstacle& obstacle : obstacles)
+    {
+        if (CheckCircleBoxCollisionXZ(
+                glm::vec3(position.x, position.y, position.z),
+                player_radius,
+                obstacle
+            ))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 void Player::Update(GLFWwindow* window, float delta_t)
 {
@@ -39,36 +59,45 @@ void Player::Update(GLFWwindow* window, float delta_t)
 
     float movement_len = sqrt(movement.x*movement.x + movement.z*movement.z);
 
-if (movement_len > 0.0f)
-{
-    movement = movement / movement_len;
-
-    const float speed = 5.0f;
-    const float player_radius = 0.35f;
-
-    glm::vec4 current_position = camera->GetPosition();
-    glm::vec4 desired_position = current_position + movement * (speed * delta_t);
-
-    bool collided = false;
-
-    const std::vector<BoxObstacle>& obstacles = GetSceneObstacles();
-
-    for (const BoxObstacle& obstacle : obstacles)
+    if (movement_len > 0.0f)
     {
-        if (CheckCircleBoxCollisionXZ(
-                glm::vec3(desired_position.x, desired_position.y, desired_position.z),
-                player_radius,
-                obstacle
-            ))
+        movement = movement / movement_len;
+
+        const float speed = 5.0f;
+        const float player_radius = 0.35f;
+
+        float amount = speed * delta_t;
+
+        glm::vec4 current_position = camera->GetPosition();
+        glm::vec4 desired_position = current_position + movement * amount;
+
+        // Primeiro tentamos o movimento completo.
+        if (!CollidesWithScene(desired_position, player_radius))
         {
-            collided = true;
-            break;
+            camera->Move(movement, amount);
+        }
+        else
+        {
+            // Se o movimento completo colidiu, tentamos separar X e Z.
+            // Isso permite deslizar ao longo das paredes/obstáculos.
+
+            glm::vec4 movement_x = glm::vec4(movement.x, 0.0f, 0.0f, 0.0f);
+            glm::vec4 desired_position_x = current_position + movement_x * amount;
+
+            if (!CollidesWithScene(desired_position_x, player_radius))
+            {
+                camera->Move(movement_x, amount);
+            }
+
+            glm::vec4 position_after_x = camera->GetPosition();
+
+            glm::vec4 movement_z = glm::vec4(0.0f, 0.0f, movement.z, 0.0f);
+            glm::vec4 desired_position_z = position_after_x + movement_z * amount;
+
+            if (!CollidesWithScene(desired_position_z, player_radius))
+            {
+                camera->Move(movement_z, amount);
+            }
         }
     }
-
-    if (!collided)
-    {
-        camera->Move(movement, speed * delta_t);
-    }
-}
 }
