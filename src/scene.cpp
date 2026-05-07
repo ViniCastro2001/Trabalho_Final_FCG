@@ -28,3 +28,24 @@ const std::vector<BoxObstacle>& GetSceneObstacles()
 
     return obstacles;
 }
+
+// Retorna os itens coletáveis do cenário.
+std::vector<Collectible>& GetSceneCollectibles()
+{
+    // Cada Collectible tem { center, radius, collected }.
+    // center = posição no mundo
+    // radius = distância necessária para coletar
+    // collected = se já foi coletado ou não
+    static std::vector<Collectible> collectibles = {
+        // Coletável 1
+        { glm::vec3(-2.0f, 0.4f, -4.0f), 0.45f, false },
+
+        // Coletável 2
+        { glm::vec3(2.0f, 0.4f, -4.0f), 0.45f, false },
+
+        // Coletável 3
+        { glm::vec3(0.0f, 0.4f, -7.0f), 0.45f, false }
+    };
+
+    return collectibles;
+}

@@ -27,6 +27,29 @@ static bool CollidesWithScene(glm::vec4 position, float player_radius)
     return false;
 }
 
+
+static void CollectItems(glm::vec4 player_position)
+{
+    std::vector<Collectible>& collectibles = GetSceneCollectibles();
+
+    for (Collectible& collectible : collectibles)
+    {
+        if (collectible.collected)
+            continue;
+
+        float dx = player_position.x - collectible.center.x;
+        float dz = player_position.z - collectible.center.z;
+
+        float distance_squared = dx*dx + dz*dz;
+
+        if (distance_squared < collectible.radius * collectible.radius)
+        {
+            collectible.collected = true;
+        }
+    }
+}
+
+
 void Player::Update(GLFWwindow* window, float delta_t)
 {
     glm::vec4 view = camera->GetViewVector();
@@ -100,4 +123,7 @@ void Player::Update(GLFWwindow* window, float delta_t)
             }
         }
     }
+
+
+    CollectItems(camera->GetPosition());
 }

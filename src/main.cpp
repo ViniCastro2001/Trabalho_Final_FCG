@@ -472,49 +472,28 @@ int main(int argc, char* argv[])
             DrawVirtualObject("the_cube");
         }
 
-/*
 
-        // Bloco placeholder 1
-        model = Matrix_Translate(0.0f, 0.15f, -5.0f)
-        * Matrix_Scale(3.0f, 2.5f, 1.0f);
+        // Desenhamos os itens coletáveis.
+        // Por enquanto usamos esferas pequenas como placeholder visual.
+        std::vector<Collectible>& collectibles = GetSceneCollectibles();
+
+        for (const Collectible& collectible : collectibles)
+        {
+            if (collectible.collected)
+                continue;
+
+            model = Matrix_Translate(collectible.center.x, collectible.center.y, collectible.center.z)
+                * Matrix_Scale(0.25f, 0.25f, 0.25f);
+
+            glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+            glUniform1i(g_object_id_uniform, SPHERE);
+            DrawVirtualObject("the_sphere");
+        }
+
 
         glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLANE);
         DrawVirtualObject("the_cube");
-
-        // Bloco placeholder 2
-        model = Matrix_Translate(-4.0f, 0.4f, -2.0f)
-        * Matrix_Scale(1.5f, 3.0f, 3.0f);
-
-        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, PLANE);
-        DrawVirtualObject("the_cube");
-
-        // Bloco placeholder 3
-        model = Matrix_Translate(4.0f, -0.1f, -2.0f)
-        * Matrix_Scale(1.5f, 2.0f, 3.0f);
-
-        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, PLANE);
-        DrawVirtualObject("the_cube");
-
-        // Bloco placeholder 4
-        model = Matrix_Translate(0.0f, 0.65f, -9.0f)
-        * Matrix_Scale(8.0f, 3.5f, 1.0f);
-
-
-
-        // Bloco placeholder 5, mais baixo.
-        // A ideia é testar depois uma situação onde a câmera consegue enxergar por cima,
-        // mas o corpo do jogador ainda deve colidir com o obstáculo.
-        model = Matrix_Translate(0.0f, -0.6f, -1.5f)
-            * Matrix_Scale(2.5f, 1.0f, 0.8f);
-
-*/
-
-glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-glUniform1i(g_object_id_uniform, PLANE);
-DrawVirtualObject("the_cube");
 
         glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLANE);
@@ -530,6 +509,37 @@ DrawVirtualObject("the_cube");
         // Imprimimos na tela informação sobre o número de quadros renderizados
         // por segundo (frames per second).
         TextRendering_ShowFramesPerSecond(window);
+
+
+        // HUD temporário dos coletáveis.
+        std::vector<Collectible>& hud_collectibles = GetSceneCollectibles();
+
+        int collected_count = 0;
+        int total_count = (int)hud_collectibles.size();
+
+        for (const Collectible& collectible : hud_collectibles)
+        {
+            if (collectible.collected)
+                collected_count++;
+        }
+
+        char collectibles_text[32];
+        snprintf(
+            collectibles_text,
+            32,
+            "Coletados: %d/%d",
+            collected_count,
+            total_count
+        );
+
+        TextRendering_PrintString(
+            window,
+            collectibles_text,
+            -0.95f,
+            0.90f,
+            1.0f
+        );
+
 
         // O framebuffer onde OpenGL executa as operações de renderização não
         // é o mesmo que está sendo mostrado para o usuário, caso contrário
