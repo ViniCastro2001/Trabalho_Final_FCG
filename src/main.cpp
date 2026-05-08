@@ -49,6 +49,7 @@
 #include "utils.h"
 #include "matrices.h"
 #include "scene.h"
+#include "game_state.h"
 
 
 //headers do jogo
@@ -160,6 +161,10 @@ void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
 void ScrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 
+
+bool AllCollectiblesCollected();
+bool IsPlayerInsideSafeZone(glm::vec4 player_position);
+
 // Definimos uma estrutura que armazenará dados necessários para renderizar
 // cada objeto da cena virtual.
 struct SceneObject
@@ -239,7 +244,38 @@ GLuint g_NumLoadedTextures = 0;
 Camera g_Camera;
 Player g_Player(&g_Camera);
 
+// Estado atual do jogo.
+GameState g_GameState;
 
+
+bool AllCollectiblesCollected()
+{
+    std::vector<Collectible>& collectibles = GetSceneCollectibles();
+
+    for (const Collectible& collectible : collectibles)
+    {
+        if (!collectible.collected)
+            return false;
+    }
+
+    return true;
+}
+
+bool IsPlayerInsideSafeZone(glm::vec4 player_position)
+{
+    const SafeZone& safe_zone = GetSafeZone();
+
+    float min_x = safe_zone.center.x - safe_zone.size.x / 2.0f;
+    float max_x = safe_zone.center.x + safe_zone.size.x / 2.0f;
+
+    float min_z = safe_zone.center.z - safe_zone.size.z / 2.0f;
+    float max_z = safe_zone.center.z + safe_zone.size.z / 2.0f;
+
+    return player_position.x >= min_x &&
+           player_position.x <= max_x &&
+           player_position.z >= min_z &&
+           player_position.z <= max_z;
+}
 
 int main(int argc, char* argv[])
 {
@@ -362,6 +398,14 @@ int main(int argc, char* argv[])
 
         g_Player.Update(window, delta_t);
 
+
+        if (g_GameState.status == GameStatus::Playing &&
+            AllCollectiblesCollected() &&
+            IsPlayerInsideSafeZone(g_Camera.GetPosition()))
+        {
+            g_GameState.status = GameStatus::Won;
+        }
+
         // Aqui executamos as operações de renderização
 
         // Definimos a cor do "fundo" do framebuffer como branco.  Tal cor é
@@ -429,26 +473,7 @@ int main(int argc, char* argv[])
         #define SPHERE 0
         #define BUNNY  1
         #define PLANE  2
-        #define CUBE   3
-
-/*
-        // Desenhamos o modelo da esfera
-        model = Matrix_Translate(-1.0f,0.0f,0.0f)
-              * Matrix_Rotate_Z(0.6f)
-              * Matrix_Rotate_X(0.2f)
-              * Matrix_Rotate_Y(g_AngleY + (float)glfwGetTime() * 0.1f);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, SPHERE);
-        DrawVirtualObject("the_sphere");
-
-
-        // Desenhamos o modelo do coelho
-        model = Matrix_Translate(1.0f,0.0f,0.0f)
-              * Matrix_Rotate_X(g_AngleX + (float)glfwGetTime() * 0.1f);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, BUNNY);
-        DrawVirtualObject("the_bunny");
-*/
+        #define SAFE_ZONE 3
 
         // Desenhamos um chão maior para testar navegação em primeira pessoa.
         model = Matrix_Scale(20.0f, 1.0f, 20.0f);
@@ -490,14 +515,18 @@ int main(int argc, char* argv[])
             DrawVirtualObject("the_sphere");
         }
 
+        // Desenhamos a zona segura/final somente depois que todos os itens forem coletados.
+        if (AllCollectiblesCollected())
+        {
+            const SafeZone& safe_zone = GetSafeZone();
 
-        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, PLANE);
-        DrawVirtualObject("the_cube");
+            model = Matrix_Translate(safe_zone.center.x, safe_zone.center.y, safe_zone.center.z)
+                * Matrix_Scale(safe_zone.size.x, safe_zone.size.y, safe_zone.size.z);
 
-        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, PLANE);
-        DrawVirtualObject("the_cube");
+            glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+            glUniform1i(g_object_id_uniform, SAFE_ZONE);
+            DrawVirtualObject("the_cube");
+        }
 
         // Imprimimos na tela os ângulos de Euler que controlam a rotação do
         // terceiro cubo.
@@ -539,6 +568,27 @@ int main(int argc, char* argv[])
             0.90f,
             1.0f
         );
+
+        if (g_GameState.status == GameStatus::Won)
+        {
+            TextRendering_PrintString(
+                window,
+                "VITORIA! Voce escapou.",
+                -0.35f,
+                0.80f,
+                1.2f
+            );
+        }
+        else if (collected_count == total_count)
+        {
+            TextRendering_PrintString(
+                window,
+                "Volte para a zona segura.",
+                -0.40f,
+                0.80f,
+                1.0f
+            );
+        }
 
 
         // O framebuffer onde OpenGL executa as operações de renderização não

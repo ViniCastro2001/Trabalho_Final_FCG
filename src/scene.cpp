@@ -49,3 +49,16 @@ std::vector<Collectible>& GetSceneCollectibles()
 
     return collectibles;
 }
+
+// Retorna a zona segura/final do jogo.
+const SafeZone& GetSafeZone()
+{
+    // Formato: { center, size }
+    // Para ficar apoiada no chão, usamos center.y = size.y / 2.
+    static SafeZone safe_zone = {
+        glm::vec3(0.0f, 2.5f, -11.5f),
+        glm::vec3(2.0f, 5.0f, 2.0f)
+    };
+
+    return safe_zone;
+}

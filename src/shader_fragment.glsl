@@ -22,6 +22,7 @@ uniform mat4 projection;
 #define SPHERE 0
 #define BUNNY  1
 #define PLANE  2
+#define SAFE_ZONE 3
 uniform int object_id;
 
 // Parâmetros da axis-aligned bounding box (AABB) do modelo
@@ -133,6 +134,11 @@ void main()
 
 		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
 		Kd0 = texture(TextureImage1, vec2(U,V)).rgb;
+    }
+    else if ( object_id == SAFE_ZONE )
+    {
+        // Verde sólido para destacar a zona segura.
+        Kd0 = vec3(0.0, 1.0, 0.0);
     }
 
     // Equação de Iluminação
