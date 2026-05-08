@@ -164,6 +164,7 @@ void ScrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 
 bool AllCollectiblesCollected();
 bool IsPlayerInsideSafeZone(glm::vec4 player_position);
+bool ShotHitsBigfoot(glm::vec4 shot_origin, glm::vec4 shot_direction);
 
 // Definimos uma estrutura que armazenará dados necessários para renderizar
 // cada objeto da cena virtual.
@@ -250,6 +251,11 @@ Bigfoot g_Bigfoot;
 // Estado atual do jogo.
 GameState g_GameState;
 
+// Mostra a esfera de debug da hitbox do Pé Grande.
+bool g_DrawBigfootHitSphere = true;
+
+// Controla se a tecla de tiro já estava pressionada no frame anterior.
+bool g_ShootKeyWasPressed = false;
 
 bool AllCollectiblesCollected()
 {
@@ -278,6 +284,51 @@ bool IsPlayerInsideSafeZone(glm::vec4 player_position)
            player_position.x <= max_x &&
            player_position.z >= min_z &&
            player_position.z <= max_z;
+}
+
+bool ShotHitsBigfoot(glm::vec4 shot_origin, glm::vec4 shot_direction)
+{
+    // Convertemos de Vector4 para Vector3 porque o cálculo do tiro usa apenas x, y, z.
+
+    glm::vec3 origin = glm::vec3(shot_origin.x, shot_origin.y, shot_origin.z);
+    glm::vec3 direction = glm::vec3(shot_direction.x, shot_direction.y, shot_direction.z);
+
+    // Garantimos que a direção do tiro tenha tamanho 1.
+    float direction_len = sqrt(direction.x*direction.x + direction.y*direction.y + direction.z*direction.z);
+
+    if (direction_len <= 0.0f)
+        return false;
+
+    direction = direction / direction_len;
+
+    // Centro da hitbox do Pé Grande.
+    glm::vec3 bigfoot_position = g_Bigfoot.GetPosition();
+
+    // Vetor da câmera até o Pé Grande.
+    glm::vec3 origin_to_bigfoot = bigfoot_position - origin;
+
+    // Projeta o Pé Grande na linha do tiro.
+    float t = origin_to_bigfoot.x * direction.x
+            + origin_to_bigfoot.y * direction.y
+            + origin_to_bigfoot.z * direction.z;
+
+    // Se t < 0, o Pé Grande está atrás da câmera.
+    if (t < 0.0f)
+        return false;
+
+    // Ponto da linha do tiro mais próximo do centro do Pé Grande.
+    glm::vec3 closest_point = origin + direction * t;
+
+    // Distância entre esse ponto e o centro da hitbox.
+    glm::vec3 difference = bigfoot_position - closest_point;
+
+    float distance_squared = difference.x*difference.x
+                           + difference.y*difference.y
+                           + difference.z*difference.z;
+
+    float hit_radius = g_Bigfoot.GetRadius();
+
+    return distance_squared <= hit_radius * hit_radius;
 }
 
 int main(int argc, char* argv[])
@@ -421,6 +472,25 @@ int main(int argc, char* argv[])
             g_GameState.status = GameStatus::Won;
         }
 
+        // Tiro temporário com a tecla F.
+        bool shoot_key_pressed = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
+
+        if (g_GameState.status == GameStatus::Playing &&
+            shoot_key_pressed &&
+            !g_ShootKeyWasPressed)
+        {
+            if (ShotHitsBigfoot(g_Camera.GetPosition(), g_Camera.GetViewVector()))
+            {
+                printf("Acertou o Pe Grande!\n");
+            }
+            else
+            {
+                printf("Errou o tiro.\n");
+            }
+        }
+
+        g_ShootKeyWasPressed = shoot_key_pressed;
+
         // Aqui executamos as operações de renderização
 
         // Definimos a cor do "fundo" do framebuffer como branco.  Tal cor é
@@ -524,6 +594,20 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, BIGFOOT);
         DrawVirtualObject("the_bunny");
 
+        // Esfera de debug da hitbox do Pé Grande.
+        // Usamos o mesmo raio que será usado para tiro/colisão.
+        if (g_DrawBigfootHitSphere)
+        {
+            float bigfoot_radius = g_Bigfoot.GetRadius();
+
+            model = Matrix_Translate(bigfoot_position.x, bigfoot_position.y, bigfoot_position.z)
+                * Matrix_Scale(bigfoot_radius, bigfoot_radius, bigfoot_radius);
+
+            glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+            glUniform1i(g_object_id_uniform, SAFE_ZONE); // Reaproveita o verde do shader.
+            DrawVirtualObject("the_sphere");
+        }
+
         // Desenhamos os itens coletáveis.
         // Por enquanto usamos esferas pequenas como placeholder visual.
         std::vector<Collectible>& collectibles = GetSceneCollectibles();
@@ -626,6 +710,14 @@ int main(int argc, char* argv[])
             );
         }
 
+        // Mira simples no centro da tela.
+        TextRendering_PrintString(
+            window,
+            "x",
+            -0.01f,
+            0.0f,
+            1.5f
+        );
 
         // O framebuffer onde OpenGL executa as operações de renderização não
         // é o mesmo que está sendo mostrado para o usuário, caso contrário
