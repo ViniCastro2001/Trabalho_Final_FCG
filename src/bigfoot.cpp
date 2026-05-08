@@ -1,12 +1,16 @@
 #include "bigfoot.h"
 
 #include <cmath>
+#include <vector>
+
+#include "collisions.h"
+#include "scene.h"
 
 Bigfoot::Bigfoot()
 {
     // Posição inicial do Pé Grande no cenário.
     // Por enquanto começamos ele mais ao fundo do mapa.
-    position = glm::vec3(0.0f, 1.0f, -8.0f);
+    position = glm::vec3(-6.0f, 1.0f, -6.5f);
 
     // Raio usado para colisão/detecção.
     radius = 0.8f;
@@ -19,6 +23,22 @@ Bigfoot::Bigfoot()
 
     state = BigfootState::Chasing;
 }
+
+static bool CollidesWithScene(glm::vec3 position, float radius)
+{
+    const std::vector<BoxObstacle>& obstacles = GetSceneObstacles();
+
+    for (const BoxObstacle& obstacle : obstacles)
+    {
+        if (CheckCircleBoxCollisionXZ(position, radius, obstacle))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 
 void Bigfoot::Update(glm::vec3 player_position, float delta_t)
 {
@@ -40,7 +60,34 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
         if (distance > 0.0f)
         {
             direction = direction / distance;
-            position += direction * speed * delta_t;
+
+            float amount = speed * delta_t;
+            glm::vec3 desired_position = position + direction * amount;
+
+            // Primeiro tentamos o movimento direto até o player.
+            if (!CollidesWithScene(desired_position, radius))
+            {
+                position = desired_position;
+            }
+            else
+            {
+                // Se colidir, tentamos separar X e Z para permitir sliding simples.
+                glm::vec3 movement_x = glm::vec3(direction.x, 0.0f, 0.0f);
+                glm::vec3 desired_position_x = position + movement_x * amount;
+
+                if (!CollidesWithScene(desired_position_x, radius))
+                {
+                    position = desired_position_x;
+                }
+
+                glm::vec3 movement_z = glm::vec3(0.0f, 0.0f, direction.z);
+                glm::vec3 desired_position_z = position + movement_z * amount;
+
+                if (!CollidesWithScene(desired_position_z, radius))
+                {
+                    position = desired_position_z;
+                }
+            }
         }
     }
 }
