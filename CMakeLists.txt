@@ -15,9 +15,9 @@ set(SOURCES
 
   src/camera.cpp
   src/collisions.cpp
-  src/enemy.cpp
   src/player.cpp
   src/scene.cpp
+  src/bigfoot.cpp
 )
 
 cmake_minimum_required(VERSION 3.5.0)

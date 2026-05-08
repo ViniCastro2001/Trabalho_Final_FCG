@@ -50,7 +50,7 @@
 #include "matrices.h"
 #include "scene.h"
 #include "game_state.h"
-
+#include "bigfoot.h"
 
 //headers do jogo
 #include "camera.h"
@@ -244,6 +244,9 @@ GLuint g_NumLoadedTextures = 0;
 Camera g_Camera;
 Player g_Player(&g_Camera);
 
+// Pé Grande
+Bigfoot g_Bigfoot;
+
 // Estado atual do jogo.
 GameState g_GameState;
 
@@ -398,10 +401,22 @@ int main(int argc, char* argv[])
 
         g_Player.Update(window, delta_t);
 
+        glm::vec4 player_position = g_Camera.GetPosition();
+
+        g_Bigfoot.Update(
+            glm::vec3(player_position.x, player_position.y, player_position.z),
+            delta_t
+        );
+
+        if (g_GameState.status == GameStatus::Playing &&
+            g_Bigfoot.GetState() == BigfootState::Attacking)
+        {
+            g_GameState.status = GameStatus::Lost;
+        }
 
         if (g_GameState.status == GameStatus::Playing &&
             AllCollectiblesCollected() &&
-            IsPlayerInsideSafeZone(g_Camera.GetPosition()))
+            IsPlayerInsideSafeZone(player_position))
         {
             g_GameState.status = GameStatus::Won;
         }
@@ -474,6 +489,7 @@ int main(int argc, char* argv[])
         #define BUNNY  1
         #define PLANE  2
         #define SAFE_ZONE 3
+        #define BIGFOOT 4
 
         // Desenhamos um chão maior para testar navegação em primeira pessoa.
         model = Matrix_Scale(20.0f, 1.0f, 20.0f);
@@ -497,6 +513,16 @@ int main(int argc, char* argv[])
             DrawVirtualObject("the_cube");
         }
 
+        // Desenhamos o Pé Grande como placeholder.
+        // Por enquanto usamos o modelo do coelho do template com a cor vermelha
+        glm::vec3 bigfoot_position = g_Bigfoot.GetPosition();
+
+        model = Matrix_Translate(bigfoot_position.x, bigfoot_position.y, bigfoot_position.z)
+            * Matrix_Scale(1.5f, 1.5f, 1.5f);
+
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, BIGFOOT);
+        DrawVirtualObject("the_bunny");
 
         // Desenhamos os itens coletáveis.
         // Por enquanto usamos esferas pequenas como placeholder visual.
@@ -575,6 +601,16 @@ int main(int argc, char* argv[])
                 window,
                 "VITORIA! Voce escapou.",
                 -0.35f,
+                0.80f,
+                1.2f
+            );
+        }
+        else if (g_GameState.status == GameStatus::Lost)
+        {
+            TextRendering_PrintString(
+                window,
+                "DERROTA! Foi papado",
+                -0.40f,
                 0.80f,
                 1.2f
             );

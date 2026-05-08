@@ -23,6 +23,7 @@ uniform mat4 projection;
 #define BUNNY  1
 #define PLANE  2
 #define SAFE_ZONE 3
+#define BIGFOOT 4
 uniform int object_id;
 
 // Parâmetros da axis-aligned bounding box (AABB) do modelo
@@ -139,6 +140,10 @@ void main()
     {
         // Verde sólido para destacar a zona segura.
         Kd0 = vec3(0.0, 1.0, 0.0);
+    }
+    else if ( object_id == BIGFOOT )
+    {
+        Kd0 = vec3(1.0, 0.0, 0.0);
     }
 
     // Equação de Iluminação
