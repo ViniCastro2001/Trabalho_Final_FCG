@@ -24,6 +24,7 @@ uniform mat4 projection;
 #define PLANE  2
 #define SAFE_ZONE 3
 #define BIGFOOT 4
+
 uniform int object_id;
 
 // Parâmetros da axis-aligned bounding box (AABB) do modelo

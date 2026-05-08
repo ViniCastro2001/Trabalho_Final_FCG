@@ -591,7 +591,8 @@ int main(int argc, char* argv[])
             {
                 printf("Acertou o Pe Grande!\n");
 
-                g_Bigfoot.StartFleeing(
+                g_Bigfoot.TakeDamage(
+                    25.0f,
                     glm::vec3(player_position.x, player_position.y, player_position.z)
                 );
             }
@@ -672,6 +673,7 @@ int main(int argc, char* argv[])
         #define PLANE  2
         #define SAFE_ZONE 3
         #define BIGFOOT 4
+
 
         // Desenhamos um chão maior para testar navegação em primeira pessoa.
         model = Matrix_Scale(50.0f, 1.0f, 50.0f);
@@ -761,6 +763,45 @@ int main(int argc, char* argv[])
         // por segundo (frames per second).
         TextRendering_ShowFramesPerSecond(window);
 
+        // Barra textual de vida do Pé Grande no topo da tela.
+        float health_ratio = g_Bigfoot.GetHealth() / g_Bigfoot.GetMaxHealth();
+
+        if (health_ratio < 0.0f)
+            health_ratio = 0.0f;
+
+        if (health_ratio > 1.0f)
+            health_ratio = 1.0f;
+
+        const int total_segments = 20;
+        int filled_segments = (int)(health_ratio * total_segments + 0.5f);
+
+        char health_bar[total_segments + 1];
+
+        for (int i = 0; i < total_segments; ++i)
+        {
+            if (i < filled_segments)
+                health_bar[i] = '#';
+            else
+                health_bar[i] = '-';
+        }
+
+        health_bar[total_segments] = '\0';
+
+        char bigfoot_health_text[128];
+        snprintf(
+            bigfoot_health_text,
+            128,
+            "Pe Grande: [%s]",
+            health_bar
+        );
+
+        TextRendering_PrintString(
+            window,
+            bigfoot_health_text,
+            -0.45f,
+            0.90f,
+            1.0f
+        );
 
         // HUD temporário dos coletáveis.
         std::vector<Collectible>& hud_collectibles = GetSceneCollectibles();
@@ -787,7 +828,7 @@ int main(int argc, char* argv[])
             window,
             collectibles_text,
             -0.95f,
-            0.90f,
+            0.82f,
             1.0f
         );
 

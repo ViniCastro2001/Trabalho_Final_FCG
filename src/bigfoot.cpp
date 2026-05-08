@@ -22,6 +22,10 @@ Bigfoot::Bigfoot()
     // Distância em que consideramos que ele alcançou o player.
     attack_range = 1.2f;
 
+    // Vida do Pé Grande.
+    max_health = 100.0f;
+    health = max_health;
+
     // Dados da fuga após levar tiro.
     flee_direction = glm::vec3(0.0f, 0.0f, 0.0f);
     flee_speed = 10.0f;
@@ -91,8 +95,29 @@ void Bigfoot::StartFleeing(glm::vec3 player_position)
     state = BigfootState::Fleeing;
 }
 
+void Bigfoot::TakeDamage(float damage, glm::vec3 player_position)
+{
+    if (IsDead())
+        return;
+
+    health -= damage;
+
+    if (health < 0.0f)
+        health = 0.0f;
+
+    if (IsDead())
+    {
+        // Por enquanto, morrer só impede novas ações relevantes.
+        return;
+    }
+
+    StartFleeing(player_position);
+}
+
 void Bigfoot::Update(glm::vec3 player_position, float delta_t)
 {
+    if (IsDead())
+        return;
 
     if (state == BigfootState::Fleeing)
     {
@@ -200,4 +225,19 @@ float Bigfoot::GetRadius() const
 BigfootState Bigfoot::GetState() const
 {
     return state;
+}
+
+float Bigfoot::GetHealth() const
+{
+    return health;
+}
+
+float Bigfoot::GetMaxHealth() const
+{
+    return max_health;
+}
+
+bool Bigfoot::IsDead() const
+{
+    return health <= 0.0f;
 }

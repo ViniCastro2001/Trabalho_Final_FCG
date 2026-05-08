@@ -22,9 +22,16 @@ public:
     // Faz o Pé Grande fugir para longe do player após levar um tiro.
     void StartFleeing(glm::vec3 player_position);
 
+    // Aplica dano ao Pé Grande.
+    void TakeDamage(float damage, glm::vec3 player_position);
+
     glm::vec3 GetPosition() const;
     float GetRadius() const;
     BigfootState GetState() const;
+
+    float GetHealth() const;
+    float GetMaxHealth() const;
+    bool IsDead() const;
 
 private:
     glm::vec3 position;
@@ -32,6 +39,9 @@ private:
     float radius;
     float speed;
     float attack_range;
+
+    float health;
+    float max_health;
 
     glm::vec3 flee_direction;
     float flee_speed;
