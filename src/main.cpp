@@ -165,6 +165,9 @@ void ScrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 bool AllCollectiblesCollected();
 bool IsPlayerInsideSafeZone(glm::vec4 player_position);
 bool ShotHitsBigfoot(glm::vec4 shot_origin, glm::vec4 shot_direction);
+bool RayHitsBox(glm::vec3 ray_origin, glm::vec3 ray_direction, BoxObstacle box, float max_distance);
+bool ShotBlockedByScene(glm::vec3 ray_origin, glm::vec3 ray_direction, float max_distance);
+
 
 // Definimos uma estrutura que armazenará dados necessários para renderizar
 // cada objeto da cena virtual.
@@ -286,6 +289,102 @@ bool IsPlayerInsideSafeZone(glm::vec4 player_position)
            player_position.z <= max_z;
 }
 
+bool RayHitsBox(glm::vec3 ray_origin, glm::vec3 ray_direction, BoxObstacle box, float max_distance)
+{
+    float box_min_x = box.center.x - box.size.x / 2.0f;
+    float box_max_x = box.center.x + box.size.x / 2.0f;
+
+    float box_min_y = box.center.y - box.size.y / 2.0f;
+    float box_max_y = box.center.y + box.size.y / 2.0f;
+
+    float box_min_z = box.center.z - box.size.z / 2.0f;
+    float box_max_z = box.center.z + box.size.z / 2.0f;
+
+    float t_min = 0.0f;
+    float t_max = max_distance;
+
+    // Teste no eixo X.
+                                // Evita divisão por zero
+    if (fabs(ray_direction.x) < 0.0001f)
+    {
+        if (ray_origin.x < box_min_x || ray_origin.x > box_max_x)
+            return false;
+    }
+    else
+    {
+        float tx1 = (box_min_x - ray_origin.x) / ray_direction.x;
+        float tx2 = (box_max_x - ray_origin.x) / ray_direction.x;
+
+        if (tx1 > tx2)
+            std::swap(tx1, tx2);
+
+        t_min = std::max(t_min, tx1);
+        t_max = std::min(t_max, tx2);
+
+        if (t_min > t_max)
+            return false;
+    }
+
+    // Teste no eixo Y.
+    if (fabs(ray_direction.y) < 0.0001f)
+    {
+        if (ray_origin.y < box_min_y || ray_origin.y > box_max_y)
+            return false;
+    }
+    else
+    {
+        float ty1 = (box_min_y - ray_origin.y) / ray_direction.y;
+        float ty2 = (box_max_y - ray_origin.y) / ray_direction.y;
+
+        if (ty1 > ty2)
+            std::swap(ty1, ty2);
+
+        t_min = std::max(t_min, ty1);
+        t_max = std::min(t_max, ty2);
+
+        if (t_min > t_max)
+            return false;
+    }
+
+    // Teste no eixo Z.
+    if (fabs(ray_direction.z) < 0.0001f)
+    {
+        if (ray_origin.z < box_min_z || ray_origin.z > box_max_z)
+            return false;
+    }
+    else
+    {
+        float tz1 = (box_min_z - ray_origin.z) / ray_direction.z;
+        float tz2 = (box_max_z - ray_origin.z) / ray_direction.z;
+
+        if (tz1 > tz2)
+            std::swap(tz1, tz2);
+
+        t_min = std::max(t_min, tz1);
+        t_max = std::min(t_max, tz2);
+
+        if (t_min > t_max)
+            return false;
+    }
+
+    return t_max >= 0.0f && t_min <= max_distance;
+}
+
+bool ShotBlockedByScene(glm::vec3 ray_origin, glm::vec3 ray_direction, float max_distance)
+{
+    const std::vector<BoxObstacle>& obstacles = GetSceneObstacles();
+
+    for (const BoxObstacle& obstacle : obstacles)
+    {
+        if (RayHitsBox(ray_origin, ray_direction, obstacle, max_distance))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool ShotHitsBigfoot(glm::vec4 shot_origin, glm::vec4 shot_direction)
 {
     // Convertemos de Vector4 para Vector3 porque o cálculo do tiro usa apenas x, y, z.
@@ -328,7 +427,16 @@ bool ShotHitsBigfoot(glm::vec4 shot_origin, glm::vec4 shot_direction)
 
     float hit_radius = g_Bigfoot.GetRadius();
 
-    return distance_squared <= hit_radius * hit_radius;
+    bool hit_bigfoot = distance_squared <= hit_radius * hit_radius;
+
+    if (!hit_bigfoot)
+        return false;
+
+    // Se há um bloco entre a câmera e o Pé Grande, o tiro é bloqueado.
+    if (ShotBlockedByScene(origin, direction, t))
+        return false;
+
+    return true;
 }
 
 int main(int argc, char* argv[])
