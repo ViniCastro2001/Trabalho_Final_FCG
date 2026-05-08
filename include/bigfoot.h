@@ -19,6 +19,9 @@ public:
     // Por enquanto, ele apenas persegue o player e entra em ataque se chegar perto.
     void Update(glm::vec3 player_position, float delta_t);
 
+    // Faz o Pé Grande fugir para longe do player após levar um tiro.
+    void StartFleeing(glm::vec3 player_position);
+
     glm::vec3 GetPosition() const;
     float GetRadius() const;
     BigfootState GetState() const;
@@ -29,6 +32,11 @@ private:
     float radius;
     float speed;
     float attack_range;
+
+    glm::vec3 flee_direction;
+    float flee_speed;
+    float flee_timer;
+    float flee_duration;
 
     BigfootState state;
 };

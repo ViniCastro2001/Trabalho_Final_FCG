@@ -5,6 +5,7 @@
 
 #include "collisions.h"
 #include "scene.h"
+#include <cstdlib>
 
 Bigfoot::Bigfoot()
 {
@@ -16,10 +17,16 @@ Bigfoot::Bigfoot()
     radius = 0.8f;
 
     // Velocidade de perseguição.
-    speed = 2.0f;
+    speed = 10.0f;
 
     // Distância em que consideramos que ele alcançou o player.
     attack_range = 1.2f;
+
+    // Dados da fuga após levar tiro.
+    flee_direction = glm::vec3(0.0f, 0.0f, 0.0f);
+    flee_speed = 10.0f;
+    flee_timer = 0.0f;
+    flee_duration = 3.0f;
 
     state = BigfootState::Chasing;
 }
@@ -39,9 +46,73 @@ static bool CollidesWithScene(glm::vec3 position, float radius)
     return false;
 }
 
+void Bigfoot::StartFleeing(glm::vec3 player_position)
+{
+
+    // Se já está fugindo, outro tiro não reinicia a fuga.
+    if (state == BigfootState::Fleeing)
+        return;
+
+    // Fugimos na direção oposta ao player.
+    flee_direction = position - player_position;
+    flee_direction.y = 0.0f;
+
+    float flee_direction_len = sqrt(
+        flee_direction.x*flee_direction.x +
+        flee_direction.z*flee_direction.z
+    );
+
+    if (flee_direction_len > 0.0f)
+    {
+        flee_direction = flee_direction / flee_direction_len;
+    }
+    else
+    {
+        // Caso extremo: se estiver exatamente na mesma posição do player.
+        flee_direction = glm::vec3(0.0f, 0.0f, -1.0f);
+    }
+
+    // Adicionamos uma variação aleatória de -45 a +45 graus na direção da fuga.
+    float random_value = (float)rand() / (float)RAND_MAX; // valor entre 0 e 1
+    float angle_degrees = -90.0f + random_value * 180.0f;
+
+    // Coverete de graus para radianos
+    float angle = angle_degrees * 3.141592f / 180.0f;
+
+    float old_x = flee_direction.x;
+    float old_z = flee_direction.z;
+
+    flee_direction.x = old_x * cos(angle) - old_z * sin(angle);
+    flee_direction.z = old_x * sin(angle) + old_z * cos(angle);
+
+    flee_timer = 0.0f;
+    flee_duration = 3.0f;
+
+    state = BigfootState::Fleeing;
+}
 
 void Bigfoot::Update(glm::vec3 player_position, float delta_t)
 {
+
+    if (state == BigfootState::Fleeing)
+        {
+            flee_timer += delta_t;
+
+            glm::vec3 desired_position = position + flee_direction * flee_speed * delta_t;
+
+            if (!CollidesWithScene(desired_position, radius))
+            {
+                position = desired_position;
+            }
+
+            if (flee_timer >= flee_duration)
+            {
+                state = BigfootState::Chasing;
+            }
+
+            return;
+        }
+
     if (state == BigfootState::Chasing)
     {
         glm::vec3 direction = player_position - position;
@@ -90,6 +161,9 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
             }
         }
     }
+
+
+
 }
 
 glm::vec3 Bigfoot::GetPosition() const

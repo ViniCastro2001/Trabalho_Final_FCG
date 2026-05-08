@@ -482,6 +482,10 @@ int main(int argc, char* argv[])
             if (ShotHitsBigfoot(g_Camera.GetPosition(), g_Camera.GetViewVector()))
             {
                 printf("Acertou o Pe Grande!\n");
+
+                g_Bigfoot.StartFleeing(
+                    glm::vec3(player_position.x, player_position.y, player_position.z)
+                );
             }
             else
             {
@@ -562,7 +566,7 @@ int main(int argc, char* argv[])
         #define BIGFOOT 4
 
         // Desenhamos um chão maior para testar navegação em primeira pessoa.
-        model = Matrix_Scale(20.0f, 1.0f, 20.0f);
+        model = Matrix_Scale(50.0f, 1.0f, 50.0f);
 
         glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLANE);
