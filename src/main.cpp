@@ -255,7 +255,7 @@ Bigfoot g_Bigfoot;
 GameState g_GameState;
 
 // Mostra a esfera de debug da hitbox do Pé Grande.
-bool g_DrawBigfootHitSphere = true;
+bool g_DrawBigfootHitSphere = false;
 
 // Controla se a tecla de tiro já estava pressionada no frame anterior.
 bool g_ShootKeyWasPressed = false;
