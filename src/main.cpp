@@ -513,8 +513,9 @@ int main(int argc, char* argv[])
     LoadShadersFromFiles();
 
     // Carregamos duas imagens para serem utilizadas como textura
-    LoadTextureImage("../../data/textures/red_brick_diff_1k.jpg");      // TextureImage0
-    LoadTextureImage("../../data/textures/rocky_terrain_02_diff_1k.jpg"); // TextureImage1
+LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImage0
+   LoadTextureImage("../../data/textures/textura_grama.png");         // TextureImage1
+    
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
     ObjModel spheremodel("../../data/models/sphere.obj");
@@ -673,10 +674,10 @@ int main(int argc, char* argv[])
         #define PLANE  2
         #define SAFE_ZONE 3
         #define BIGFOOT 4
-
+        #define WALL 5
 
         // Desenhamos um chão maior para testar navegação em primeira pessoa.
-        model = Matrix_Scale(50.0f, 1.0f, 50.0f);
+        model = Matrix_Scale(100.0f, 1.0f, 100.0f);
 
         glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLANE);
@@ -693,7 +694,7 @@ int main(int argc, char* argv[])
                 * Matrix_Scale(obstacle.size.x, obstacle.size.y, obstacle.size.z);
 
             glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-            glUniform1i(g_object_id_uniform, PLANE);
+            glUniform1i(g_object_id_uniform, WALL);
             DrawVirtualObject("the_cube");
         }
 
@@ -921,8 +922,8 @@ void LoadTextureImage(const char* filename)
     glGenSamplers(1, &sampler_id);
 
     // Veja slides 95-96 do documento Aula_20_Mapeamento_de_Texturas.pdf
-    glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
     // Parâmetros de amostragem da textura.
     glSamplerParameteri(sampler_id, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);

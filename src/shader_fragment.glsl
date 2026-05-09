@@ -24,6 +24,7 @@ uniform mat4 projection;
 #define PLANE  2
 #define SAFE_ZONE 3
 #define BIGFOOT 4
+#define WALL 5
 
 uniform int object_id;
 
@@ -145,6 +146,11 @@ void main()
     else if ( object_id == BIGFOOT )
     {
         Kd0 = vec3(1.0, 0.0, 0.0);
+    }
+    else if ( object_id == WALL )
+    {
+        // Paredes/blocos: textura de tijolos.
+        Kd0 = texture(TextureImage0, texcoords).rgb;
     }
 
     // Equação de Iluminação

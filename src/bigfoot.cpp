@@ -16,13 +16,13 @@ Bigfoot::Bigfoot()
 {
     // Posição inicial do Pé Grande no cenário.
     // Por enquanto começamos ele mais ao fundo do mapa.
-    position = glm::vec3(-6.0f, 1.0f, -6.5f);
+    position = glm::vec3(-6.0f, 1.0f, -18.0f);
 
     // Raio usado para colisão/detecção.
     radius = 0.8f;
 
     // Velocidade de perseguição.
-    speed = 10.0f;
+    speed = 15.0f;
 
     // Distância em que consideramos que ele alcançou o player.
     attack_range = 1.2f;
@@ -33,9 +33,9 @@ Bigfoot::Bigfoot()
 
     // Dados da fuga após levar tiro.
     flee_direction = glm::vec3(0.0f, 0.0f, 0.0f);
-    flee_speed = 10.0f;
+    flee_speed = 16.0f;
     flee_timer = 0.0f;
-    flee_duration = 3.0f;
+
 
     // Pontos de controle da curva Bézier usada durante a fuga.
     bezier_p0 = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -102,7 +102,10 @@ void Bigfoot::StartFleeing(glm::vec3 player_position)
 
     // Reseta o timer e define a duração da fuga.
     flee_timer = 0.0f;
-    flee_duration = 3.0f;
+
+    // Duração aleatória da fuga entre 5 e 15 segundos.
+    float duration_random = (float)rand() / (float)RAND_MAX;
+    flee_duration = 5.0f + duration_random * 10.0f;
 
     // Definimos a curva Bézier cúbica usada no recuo.
     // P0 é a posição atual do Pé Grande.
@@ -113,6 +116,12 @@ void Bigfoot::StartFleeing(glm::vec3 player_position)
 
     // P3 é o ponto final da fuga, na direção calculada.
     bezier_p3 = bezier_p0 + flee_direction * flee_distance;
+
+    
+    // Evita que o Pé Grande fuja longe demais em fugas longas.
+    if (flee_distance > 150.0f)
+        flee_distance = 150.0f;
+
 
     // Direção lateral perpendicular à direção da fuga no plano XZ.
     glm::vec3 side_direction = glm::vec3(-flee_direction.z, 0.0f, flee_direction.x);
