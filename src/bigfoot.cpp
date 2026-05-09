@@ -2,10 +2,15 @@
 
 #include <cmath>
 #include <vector>
+#include <cstdlib>
 
 #include "collisions.h"
 #include "scene.h"
-#include <cstdlib>
+
+static glm::vec3 Lerp(glm::vec3 a, glm::vec3 b, float t)
+{
+    return a + t * (b - a);
+}
 
 Bigfoot::Bigfoot()
 {
@@ -31,6 +36,12 @@ Bigfoot::Bigfoot()
     flee_speed = 10.0f;
     flee_timer = 0.0f;
     flee_duration = 3.0f;
+
+    // Pontos de controle da curva Bézier usada durante a fuga.
+    bezier_p0 = glm::vec3(0.0f, 0.0f, 0.0f);
+    bezier_p1 = glm::vec3(0.0f, 0.0f, 0.0f);
+    bezier_p2 = glm::vec3(0.0f, 0.0f, 0.0f);
+    bezier_p3 = glm::vec3(0.0f, 0.0f, 0.0f);
 
     state = BigfootState::Chasing;
 }
@@ -89,8 +100,35 @@ void Bigfoot::StartFleeing(glm::vec3 player_position)
     flee_direction.x = old_x * cos(angle) - old_z * sin(angle);
     flee_direction.z = old_x * sin(angle) + old_z * cos(angle);
 
+    // Reseta o timer e define a duração da fuga.
     flee_timer = 0.0f;
     flee_duration = 3.0f;
+
+    // Definimos a curva Bézier cúbica usada no recuo.
+    // P0 é a posição atual do Pé Grande.
+    bezier_p0 = position;
+
+    // Usamos flee_speed para calcular a distância total da fuga.
+    float flee_distance = flee_speed * flee_duration;
+
+    // P3 é o ponto final da fuga, na direção calculada.
+    bezier_p3 = bezier_p0 + flee_direction * flee_distance;
+
+    // Direção lateral perpendicular à direção da fuga no plano XZ.
+    glm::vec3 side_direction = glm::vec3(-flee_direction.z, 0.0f, flee_direction.x);
+
+    // Deslocamento lateral aleatório para tornar a curva menos previsível.
+    float side_random = (float)rand() / (float)RAND_MAX;
+    float side_offset = -30.0f + side_random * 60.0f;
+
+    // P1 e P2 puxam a trajetória para os lados, formando uma curva.
+    bezier_p1 = bezier_p0
+            + flee_direction * (flee_distance * 0.33f)
+            + side_direction * side_offset;
+
+    bezier_p2 = bezier_p0
+            + flee_direction * (flee_distance * 0.66f)
+            - side_direction * side_offset;
 
     state = BigfootState::Fleeing;
 }
@@ -114,6 +152,31 @@ void Bigfoot::TakeDamage(float damage, glm::vec3 player_position)
     StartFleeing(player_position);
 }
 
+glm::vec3 Bigfoot::ComputeBezierPoint(float t) const
+{
+    // Garantimos que t fique no intervalo [0, 1].
+    if (t < 0.0f)
+        t = 0.0f;
+
+    if (t > 1.0f)
+        t = 1.0f;
+
+    // Algoritmo de De Casteljau para Bézier cúbica.
+    // 4 pontos -> 3 pontos.
+    glm::vec3 p01 = Lerp(bezier_p0, bezier_p1, t);
+    glm::vec3 p12 = Lerp(bezier_p1, bezier_p2, t);
+    glm::vec3 p23 = Lerp(bezier_p2, bezier_p3, t);
+
+    // 3 pontos -> 2 pontos.
+    glm::vec3 p012 = Lerp(p01, p12, t);
+    glm::vec3 p123 = Lerp(p12, p23, t);
+
+    // 2 pontos -> 1 ponto final da curva.
+    glm::vec3 point = Lerp(p012, p123, t);
+
+    return point;
+}
+
 void Bigfoot::Update(glm::vec3 player_position, float delta_t)
 {
     if (IsDead())
@@ -123,10 +186,17 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
     {
         flee_timer += delta_t;
 
-        float amount = flee_speed * delta_t;
-        glm::vec3 desired_position = position + flee_direction * amount;
+        float t = flee_timer / flee_duration;
 
-        // Primeiro tentamos o movimento completo da fuga.
+        if (t > 1.0f)
+            t = 1.0f;
+
+        glm::vec3 desired_position = ComputeBezierPoint(t);
+
+        // Movimento necessário para sair da posição atual e ir até o ponto da curva.
+        glm::vec3 movement = desired_position - position;
+
+        // Primeiro tentamos o movimento completo até o ponto da curva.
         if (!CollidesWithScene(desired_position, radius))
         {
             position = desired_position;
@@ -134,8 +204,7 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
         else
         {
             // Se colidir, tentamos separar X e Z para permitir sliding simples.
-            glm::vec3 movement_x = glm::vec3(flee_direction.x, 0.0f, 0.0f);
-            glm::vec3 desired_position_x = position + movement_x * amount;
+            glm::vec3 desired_position_x = position + glm::vec3(movement.x, 0.0f, 0.0f);
 
             if (!CollidesWithScene(desired_position_x, radius))
             {
@@ -144,8 +213,7 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
 
             glm::vec3 position_after_x = position;
 
-            glm::vec3 movement_z = glm::vec3(0.0f, 0.0f, flee_direction.z);
-            glm::vec3 desired_position_z = position_after_x + movement_z * amount;
+            glm::vec3 desired_position_z = position_after_x + glm::vec3(0.0f, 0.0f, movement.z);
 
             if (!CollidesWithScene(desired_position_z, radius))
             {
@@ -209,7 +277,6 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
             }
         }
     }
-
 }
 
 glm::vec3 Bigfoot::GetPosition() const

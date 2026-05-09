@@ -43,10 +43,19 @@ private:
     float health;
     float max_health;
 
+    // Dados da fuga após levar tiro.
     glm::vec3 flee_direction;
     float flee_speed;
     float flee_timer;
     float flee_duration;
+
+    // Pontos de controle da curva Bézier usada durante a fuga.
+    glm::vec3 bezier_p0;
+    glm::vec3 bezier_p1;
+    glm::vec3 bezier_p2;
+    glm::vec3 bezier_p3;
+
+    glm::vec3 ComputeBezierPoint(float t) const;
 
     BigfootState state;
 };
