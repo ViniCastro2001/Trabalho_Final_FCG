@@ -35,6 +35,7 @@ Bigfoot::Bigfoot()
     flee_direction = glm::vec3(0.0f, 0.0f, 0.0f);
     flee_speed = 16.0f;
     flee_timer = 0.0f;
+    flee_duration = 3.0f;
 
 
     // Pontos de controle da curva Bézier usada durante a fuga.
@@ -59,6 +60,44 @@ static bool CollidesWithScene(glm::vec3 position, float radius)
     }
 
     return false;
+}
+
+static void MoveWithCollisionSliding(glm::vec3& position, glm::vec3 movement, float radius)
+{
+    float distance = sqrt(movement.x*movement.x + movement.z*movement.z);
+
+    // Quebra movimentos grandes em passos menores para evitar atravessar paredes.
+    int steps = (int)(distance / 0.20f) + 1;
+
+    for (int i = 0; i < steps; ++i)
+    {
+        glm::vec3 step_movement = movement / (float)steps;
+
+        glm::vec3 desired_position = position + step_movement;
+
+        // Primeiro tenta o movimento completo do subpasso.
+        if (!CollidesWithScene(desired_position, radius))
+        {
+            position = desired_position;
+        }
+        else
+        {
+            // Se colidir, tenta separar X e Z para permitir sliding simples.
+            glm::vec3 desired_position_x = position + glm::vec3(step_movement.x, 0.0f, 0.0f);
+
+            if (!CollidesWithScene(desired_position_x, radius))
+            {
+                position = desired_position_x;
+            }
+
+            glm::vec3 desired_position_z = position + glm::vec3(0.0f, 0.0f, step_movement.z);
+
+            if (!CollidesWithScene(desired_position_z, radius))
+            {
+                position = desired_position_z;
+            }
+        }
+    }
 }
 
 void Bigfoot::StartFleeing(glm::vec3 player_position)
@@ -105,7 +144,7 @@ void Bigfoot::StartFleeing(glm::vec3 player_position)
 
     // Duração aleatória da fuga entre 5 e 15 segundos.
     float duration_random = (float)rand() / (float)RAND_MAX;
-    flee_duration = 5.0f + duration_random * 10.0f;
+    flee_duration = 3.0f + duration_random * 4.0f;
 
     // Definimos a curva Bézier cúbica usada no recuo.
     // P0 é a posição atual do Pé Grande.
@@ -114,13 +153,13 @@ void Bigfoot::StartFleeing(glm::vec3 player_position)
     // Usamos flee_speed para calcular a distância total da fuga.
     float flee_distance = flee_speed * flee_duration;
 
+    // Evita que o Pé Grande fuja longe demais em fugas longas.
+    if (flee_distance > 50.0f)
+        flee_distance = 50.0f;
+
+
     // P3 é o ponto final da fuga, na direção calculada.
     bezier_p3 = bezier_p0 + flee_direction * flee_distance;
-
-    
-    // Evita que o Pé Grande fuja longe demais em fugas longas.
-    if (flee_distance > 150.0f)
-        flee_distance = 150.0f;
 
 
     // Direção lateral perpendicular à direção da fuga no plano XZ.
@@ -128,7 +167,7 @@ void Bigfoot::StartFleeing(glm::vec3 player_position)
 
     // Deslocamento lateral aleatório para tornar a curva menos previsível.
     float side_random = (float)rand() / (float)RAND_MAX;
-    float side_offset = -30.0f + side_random * 60.0f;
+    float side_offset = -20.0f + side_random * 40.0f;
 
     // P1 e P2 puxam a trajetória para os lados, formando uma curva.
     bezier_p1 = bezier_p0
@@ -202,33 +241,22 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
 
         glm::vec3 desired_position = ComputeBezierPoint(t);
 
-        // Movimento necessário para sair da posição atual e ir até o ponto da curva.
+        // Movimento desejado na direção do ponto atual da curva.
         glm::vec3 movement = desired_position - position;
 
-        // Primeiro tentamos o movimento completo até o ponto da curva.
-        if (!CollidesWithScene(desired_position, radius))
+        // Limitamos o tamanho do movimento por frame para evitar teleportes
+        // quando o Pé Grande fica preso em uma parede e a curva continua avançando.
+        float movement_length = sqrt(movement.x*movement.x + movement.z*movement.z);
+
+        float max_step = flee_speed * delta_t;
+
+        if (movement_length > max_step && movement_length > 0.0f)
         {
-            position = desired_position;
+            movement = movement / movement_length;
+            movement = movement * max_step;
         }
-        else
-        {
-            // Se colidir, tentamos separar X e Z para permitir sliding simples.
-            glm::vec3 desired_position_x = position + glm::vec3(movement.x, 0.0f, 0.0f);
 
-            if (!CollidesWithScene(desired_position_x, radius))
-            {
-                position = desired_position_x;
-            }
-
-            glm::vec3 position_after_x = position;
-
-            glm::vec3 desired_position_z = position_after_x + glm::vec3(0.0f, 0.0f, movement.z);
-
-            if (!CollidesWithScene(desired_position_z, radius))
-            {
-                position = desired_position_z;
-            }
-        }
+        MoveWithCollisionSliding(position, movement, radius);
 
         if (flee_timer >= flee_duration)
         {
@@ -258,32 +286,9 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
             direction = direction / distance;
 
             float amount = speed * delta_t;
-            glm::vec3 desired_position = position + direction * amount;
+            glm::vec3 movement = direction * amount;
 
-            // Primeiro tentamos o movimento direto até o player.
-            if (!CollidesWithScene(desired_position, radius))
-            {
-                position = desired_position;
-            }
-            else
-            {
-                // Se colidir, tentamos separar X e Z para permitir sliding simples.
-                glm::vec3 movement_x = glm::vec3(direction.x, 0.0f, 0.0f);
-                glm::vec3 desired_position_x = position + movement_x * amount;
-
-                if (!CollidesWithScene(desired_position_x, radius))
-                {
-                    position = desired_position_x;
-                }
-
-                glm::vec3 movement_z = glm::vec3(0.0f, 0.0f, direction.z);
-                glm::vec3 desired_position_z = position + movement_z * amount;
-
-                if (!CollidesWithScene(desired_position_z, radius))
-                {
-                    position = desired_position_z;
-                }
-            }
+            MoveWithCollisionSliding(position, movement, radius);
         }
     }
 }
