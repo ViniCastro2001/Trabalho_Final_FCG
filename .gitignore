@@ -6,3 +6,4 @@ bin/
 *.ilk
 *.pdb
 *.log
+/portas_abertas_reference
