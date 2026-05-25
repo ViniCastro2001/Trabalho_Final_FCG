@@ -24,10 +24,12 @@ public:
 
     // Aplica dano ao Pé Grande.
     void TakeDamage(float damage, glm::vec3 player_position);
+    void ApplyDifficultyMultipliers(float speed_multiplier, float health_multiplier);
 
     glm::vec3 GetPosition() const;
     float GetRadius() const;
     BigfootState GetState() const;
+    float GetFacingYaw() const;
 
     float GetHealth() const;
     float GetMaxHealth() const;
@@ -42,6 +44,7 @@ private:
 
     float health;
     float max_health;
+    glm::vec3 facing_direction;
 
     // Dados da fuga após levar tiro.
     glm::vec3 flee_direction;
@@ -56,6 +59,7 @@ private:
     glm::vec3 bezier_p3;
 
     glm::vec3 ComputeBezierPoint(float t) const;
+    void UpdateFacingFromMovement(glm::vec3 start_position);
 
     BigfootState state;
 };

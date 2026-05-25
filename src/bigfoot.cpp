@@ -12,39 +12,17 @@ static glm::vec3 Lerp(glm::vec3 a, glm::vec3 b, float t)
     return a + t * (b - a);
 }
 
-Bigfoot::Bigfoot()
+static float DistanceXZ(glm::vec3 a, glm::vec3 b)
 {
-    // Posição inicial do Pé Grande no cenário.
-    // Por enquanto começamos ele mais ao fundo do mapa.
-    position = glm::vec3(-6.0f, 1.0f, -18.0f);
+    float dx = a.x - b.x;
+    float dz = a.z - b.z;
+    return sqrt(dx*dx + dz*dz);
+}
 
-    // Raio usado para colisão/detecção.
-    radius = 0.8f;
-
-    // Velocidade de perseguição.
-    speed = 15.0f;
-
-    // Distância em que consideramos que ele alcançou o player.
-    attack_range = 1.2f;
-
-    // Vida do Pé Grande.
-    max_health = 100.0f;
-    health = max_health;
-
-    // Dados da fuga após levar tiro.
-    flee_direction = glm::vec3(0.0f, 0.0f, 0.0f);
-    flee_speed = 16.0f;
-    flee_timer = 0.0f;
-    flee_duration = 3.0f;
-
-
-    // Pontos de controle da curva Bézier usada durante a fuga.
-    bezier_p0 = glm::vec3(0.0f, 0.0f, 0.0f);
-    bezier_p1 = glm::vec3(0.0f, 0.0f, 0.0f);
-    bezier_p2 = glm::vec3(0.0f, 0.0f, 0.0f);
-    bezier_p3 = glm::vec3(0.0f, 0.0f, 0.0f);
-
-    state = BigfootState::Chasing;
+static float RandomFloat(float min_value, float max_value)
+{
+    float t = (float)rand() / (float)RAND_MAX;
+    return min_value + (max_value - min_value) * t;
 }
 
 static bool CollidesWithScene(glm::vec3 position, float radius)
@@ -60,6 +38,116 @@ static bool CollidesWithScene(glm::vec3 position, float radius)
     }
 
     return false;
+}
+
+static bool SpawnCollidesWithScene(glm::vec3 position, float radius)
+{
+    if (CollidesWithScene(position, radius))
+        return true;
+
+    const SafeZone& safe_zone = GetSafeZone();
+    BoxObstacle safe_zone_box = { safe_zone.center, safe_zone.size };
+    return CheckCircleBoxCollisionXZ(position, radius + 1.5f, safe_zone_box);
+}
+
+static glm::vec3 ChooseSafeBigfootSpawn(float radius)
+{
+    struct SpawnZone
+    {
+        float min_x;
+        float max_x;
+        float min_z;
+        float max_z;
+    };
+
+    static const SpawnZone zones[] = {
+        { -76.0f, -47.0f, -144.0f,  43.0f },
+        {  47.0f,  76.0f, -144.0f,  43.0f },
+        { -66.0f,  66.0f, -154.0f, -124.0f },
+        { -66.0f,  66.0f,   35.0f,  50.0f },
+        {  -3.0f,   3.0f, -116.0f, -30.0f },
+        { -35.0f, -28.0f, -116.0f, -12.0f },
+        {  23.0f,  28.0f,  -84.0f,  -8.0f }
+    };
+
+    static const glm::vec3 fallback_positions[] = {
+        glm::vec3(0.0f, 1.0f, -118.0f),
+        glm::vec3(-58.0f, 1.0f, -96.0f),
+        glm::vec3(58.0f, 1.0f, -76.0f),
+        glm::vec3(-42.0f, 1.0f, -18.0f),
+        glm::vec3(42.0f, 1.0f, -36.0f)
+    };
+
+    const glm::vec3 player_spawn = glm::vec3(0.0f, 1.7f, 27.0f);
+    const float min_player_distance = 38.0f;
+    const int zone_count = (int)(sizeof(zones) / sizeof(zones[0]));
+    const int fallback_count = (int)(sizeof(fallback_positions) / sizeof(fallback_positions[0]));
+
+    for (int attempt = 0; attempt < 900; ++attempt)
+    {
+        const SpawnZone& zone = zones[rand() % zone_count];
+        glm::vec3 candidate = glm::vec3(
+            RandomFloat(zone.min_x, zone.max_x),
+            1.0f,
+            RandomFloat(zone.min_z, zone.max_z)
+        );
+
+        if (DistanceXZ(candidate, player_spawn) < min_player_distance)
+            continue;
+
+        if (SpawnCollidesWithScene(candidate, radius + 0.35f))
+            continue;
+
+        return candidate;
+    }
+
+    for (int i = 0; i < fallback_count; ++i)
+    {
+        glm::vec3 candidate = fallback_positions[i];
+
+        if (DistanceXZ(candidate, player_spawn) >= min_player_distance &&
+            !SpawnCollidesWithScene(candidate, radius + 0.35f))
+        {
+            return candidate;
+        }
+    }
+
+    return glm::vec3(0.0f, 1.0f, -118.0f);
+}
+
+Bigfoot::Bigfoot()
+{
+    // Raio usado para colisão/detecção.
+    radius = 0.8f;
+
+    // Posição inicial do Pé Grande no cenário.
+    position = ChooseSafeBigfootSpawn(radius);
+
+    // Velocidade de perseguição.
+    speed = 7.5f;
+
+    // Distância em que consideramos que ele alcançou o player.
+    attack_range = 1.4f;
+
+    // Vida do Pé Grande.
+    max_health = 100.0f;
+    health = max_health;
+    facing_direction = glm::vec3(0.0f, 0.0f, 1.0f);
+
+    // Dados da fuga após levar tiro.
+    flee_direction = glm::vec3(0.0f, 0.0f, 0.0f);
+    flee_speed = 16.0f;
+    flee_timer = 0.0f;
+    flee_duration = 3.0f;
+
+
+    // Pontos de controle da curva Bézier usada durante a fuga.
+    bezier_p0 = glm::vec3(0.0f, 0.0f, 0.0f);
+    bezier_p1 = glm::vec3(0.0f, 0.0f, 0.0f);
+    bezier_p2 = glm::vec3(0.0f, 0.0f, 0.0f);
+    bezier_p3 = glm::vec3(0.0f, 0.0f, 0.0f);
+
+    state = BigfootState::Chasing;
 }
 
 static void MoveWithCollisionSliding(glm::vec3& position, glm::vec3 movement, float radius)
@@ -100,6 +188,69 @@ static void MoveWithCollisionSliding(glm::vec3& position, glm::vec3 movement, fl
     }
 }
 
+static glm::vec3 RotateXZ(glm::vec3 direction, float angle)
+{
+    float c = cos(angle);
+    float s = sin(angle);
+
+    return glm::vec3(
+        direction.x * c - direction.z * s,
+        0.0f,
+        direction.x * s + direction.z * c
+    );
+}
+
+static glm::vec3 ChooseChaseDirection(glm::vec3 position, glm::vec3 desired_direction, float radius, float step_distance)
+{
+    glm::vec3 direct_target = position + desired_direction * step_distance;
+
+    if (!CollidesWithScene(direct_target, radius))
+        return desired_direction;
+
+    static const float angle_candidates[] = {
+         0.45f, -0.45f,
+         0.85f, -0.85f,
+         1.25f, -1.25f,
+         1.70f, -1.70f
+    };
+
+    float best_clearance = -1.0f;
+    glm::vec3 best_direction = desired_direction;
+
+    for (float angle : angle_candidates)
+    {
+        glm::vec3 candidate = RotateXZ(desired_direction, angle);
+        float candidate_len = sqrt(candidate.x*candidate.x + candidate.z*candidate.z);
+
+        if (candidate_len <= 0.0f)
+            continue;
+
+        candidate = candidate / candidate_len;
+
+        float clearance = 0.0f;
+        const int probes = 6;
+
+        for (int probe = 1; probe <= probes; ++probe)
+        {
+            float distance = step_distance * (float)probe / (float)probes;
+            glm::vec3 probe_position = position + candidate * distance;
+
+            if (CollidesWithScene(probe_position, radius))
+                break;
+
+            clearance = distance;
+        }
+
+        if (clearance > best_clearance)
+        {
+            best_clearance = clearance;
+            best_direction = candidate;
+        }
+    }
+
+    return best_direction;
+}
+
 void Bigfoot::StartFleeing(glm::vec3 player_position)
 {
 
@@ -138,6 +289,7 @@ void Bigfoot::StartFleeing(glm::vec3 player_position)
 
     flee_direction.x = old_x * cos(angle) - old_z * sin(angle);
     flee_direction.z = old_x * sin(angle) + old_z * cos(angle);
+    facing_direction = flee_direction;
 
     // Reseta o timer e define a duração da fuga.
     flee_timer = 0.0f;
@@ -200,6 +352,20 @@ void Bigfoot::TakeDamage(float damage, glm::vec3 player_position)
     StartFleeing(player_position);
 }
 
+void Bigfoot::ApplyDifficultyMultipliers(float speed_multiplier, float health_multiplier)
+{
+    if (speed_multiplier < 0.1f)
+        speed_multiplier = 0.1f;
+
+    if (health_multiplier < 0.1f)
+        health_multiplier = 0.1f;
+
+    speed *= speed_multiplier;
+    flee_speed *= speed_multiplier;
+    max_health *= health_multiplier;
+    health = max_health;
+}
+
 glm::vec3 Bigfoot::ComputeBezierPoint(float t) const
 {
     // Garantimos que t fique no intervalo [0, 1].
@@ -223,6 +389,17 @@ glm::vec3 Bigfoot::ComputeBezierPoint(float t) const
     glm::vec3 point = Lerp(p012, p123, t);
 
     return point;
+}
+
+void Bigfoot::UpdateFacingFromMovement(glm::vec3 start_position)
+{
+    glm::vec3 movement = position - start_position;
+    movement.y = 0.0f;
+
+    float movement_len = sqrt(movement.x*movement.x + movement.z*movement.z);
+
+    if (movement_len > 0.0001f)
+        facing_direction = movement / movement_len;
 }
 
 void Bigfoot::Update(glm::vec3 player_position, float delta_t)
@@ -256,7 +433,9 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
             movement = movement * max_step;
         }
 
+        glm::vec3 start_position = position;
         MoveWithCollisionSliding(position, movement, radius);
+        UpdateFacingFromMovement(start_position);
 
         if (flee_timer >= flee_duration)
         {
@@ -286,9 +465,12 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
             direction = direction / distance;
 
             float amount = speed * delta_t;
-            glm::vec3 movement = direction * amount;
+            glm::vec3 chase_direction = ChooseChaseDirection(position, direction, radius, amount * 1.4f);
+            glm::vec3 movement = chase_direction * amount;
 
+            glm::vec3 start_position = position;
             MoveWithCollisionSliding(position, movement, radius);
+            UpdateFacingFromMovement(start_position);
         }
     }
 }
@@ -306,6 +488,11 @@ float Bigfoot::GetRadius() const
 BigfootState Bigfoot::GetState() const
 {
     return state;
+}
+
+float Bigfoot::GetFacingYaw() const
+{
+    return atan2(facing_direction.x, facing_direction.z);
 }
 
 float Bigfoot::GetHealth() const

@@ -425,14 +425,19 @@ int ClampPrestigeLevel(int level)
 
 float GetPrestigeSpeedMultiplierForLevel(int level)
 {
-    (void)level;
-    return 1.0f;
+    int tier_level = GetBigfootTierLevel(level);
+    float multiplier = 1.0f + PRESTIGE_SPEED_STEP * (float)tier_level;
+
+    if (multiplier > PRESTIGE_SPEED_CAP)
+        multiplier = PRESTIGE_SPEED_CAP;
+
+    return multiplier;
 }
 
 float GetPrestigeHealthMultiplierForLevel(int level)
 {
-    (void)level;
-    return 1.0f;
+    int tier_level = GetBigfootTierLevel(level);
+    return 1.0f + PRESTIGE_HEALTH_STEP * (float)tier_level;
 }
 
 int GetBigfootCountForLevel(int level)
@@ -700,6 +705,10 @@ void ResetGame(bool start_playing)
     g_Bigfoots.clear();
 
     BigfootInstance instance;
+    instance.enemy.ApplyDifficultyMultipliers(
+        GetPrestigeSpeedMultiplierForLevel(g_RunPrestigeLevel),
+        GetPrestigeHealthMultiplierForLevel(g_RunPrestigeLevel)
+    );
     g_Bigfoots.push_back(instance);
 
     g_GameState.status = start_playing ? GameStatus::Playing : GameStatus::MainMenu;
@@ -1191,11 +1200,7 @@ float UpdateBigfootFacing(size_t index, glm::vec3 current_position, float delta_
 
     float movement_length = sqrt(movement.x*movement.x + movement.z*movement.z);
 
-    float target_yaw = instance.render_yaw;
-
-    if (movement_length > 0.0001f)
-        target_yaw = atan2(movement.x, movement.z);
-
+    float target_yaw = instance.enemy.GetFacingYaw();
     float yaw_delta = NormalizeAngle(target_yaw - instance.render_yaw);
     instance.render_yaw += yaw_delta * 0.22f;
     instance.render_yaw = NormalizeAngle(instance.render_yaw);
