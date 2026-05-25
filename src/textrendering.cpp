@@ -31,7 +31,7 @@ const GLchar* const textfragmentshader_source = ""
 "out vec4 fragColor;\n"
 "void main()\n"
 "{\n"
-    "fragColor = vec4(0, 0, 0, texture(tex, texCoords).r);\n"
+    "fragColor = vec4(1, 1, 1, texture(tex, texCoords).r);\n"
 "}\n"
 "\0";
 
@@ -86,6 +86,95 @@ GLuint textVAO;
 GLuint textVBO;
 GLuint textprogram_id;
 GLuint texttexture_id;
+
+GLuint rectVAO          = 0;
+GLuint rectVBO          = 0;
+GLuint rectprogram_id   = 0;
+GLint  rectColorUniform = -1;
+
+const GLchar* const rectvertexshader_source = ""
+"#version 330\n"
+"layout (location = 0) in vec2 position;\n"
+"void main() { gl_Position = vec4(position, 0, 1); }\n"
+"\0";
+
+const GLchar* const rectfragmentshader_source = ""
+"#version 330\n"
+"uniform vec4 uColor;\n"
+"out vec4 fragColor;\n"
+"void main() { fragColor = uColor; }\n"
+"\0";
+
+void TextRendering_InitRect()
+{
+    glGenBuffers(1, &rectVBO);
+    glGenVertexArrays(1, &rectVAO);
+
+    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+    TextRendering_LoadShader(rectvertexshader_source, vs);
+
+    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+    TextRendering_LoadShader(rectfragmentshader_source, fs);
+
+    rectprogram_id = CreateGpuProgram(vs, fs);
+    glLinkProgram(rectprogram_id);
+    rectColorUniform = glGetUniformLocation(rectprogram_id, "uColor");
+
+    glBindVertexArray(rectVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, rectVBO);
+    glBufferData(GL_ARRAY_BUFFER, 12 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
+void TextRendering_DrawRectPx(GLFWwindow* window, int x_px, int y_px, int w_px, int h_px,
+                              float r, float g, float b, float a)
+{
+    if (rectprogram_id == 0)
+        TextRendering_InitRect();
+
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+
+    float x0 = (float)x_px / (float)width  * 2.0f - 1.0f;
+    float x1 = (float)(x_px + w_px) / (float)width  * 2.0f - 1.0f;
+    float y0 = (float)y_px / (float)height * 2.0f - 1.0f;
+    float y1 = (float)(y_px + h_px) / (float)height * 2.0f - 1.0f;
+
+    float data[12] = { x0, y0,  x0, y1,  x1, y1,  x0, y0,  x1, y1,  x1, y0 };
+
+    GLboolean was_scissor = glIsEnabled(GL_SCISSOR_TEST);
+    GLboolean was_cull    = glIsEnabled(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_CULL_FACE);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthFunc(GL_ALWAYS);
+    glDepthMask(GL_FALSE);
+
+    glBindBuffer(GL_ARRAY_BUFFER, rectVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, 12 * sizeof(float), data);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glUseProgram(rectprogram_id);
+    glUniform4f(rectColorUniform, r, g, b, a);
+    glBindVertexArray(rectVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+    glUseProgram(0);
+
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS);
+    glDisable(GL_BLEND);
+
+    if (was_scissor) glEnable(GL_SCISSOR_TEST);
+    if (was_cull)    glEnable(GL_CULL_FACE);
+}
+
+float TextRendering_StringWidth(GLFWwindow* window, const std::string &str, float scale = 1.0f);
 
 void TextRendering_Init()
 {
@@ -223,6 +312,35 @@ float TextRendering_CharWidth(GLFWwindow* window)
     int width, height;
     glfwGetWindowSize(window, &width, &height);
     return dejavufont.glyphs[32].advance_x / width * textscale;
+}
+
+float TextRendering_StringWidth(GLFWwindow* window, const std::string &str, float scale)
+{
+    scale *= textscale;
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+    float sx = scale / (float)width;
+
+    float total = 0.0f;
+    for (size_t i = 0; i < str.size(); i++)
+    {
+        texture_glyph_t* glyph = 0;
+        for (size_t j = 0; j < dejavufont.glyphs_count; ++j)
+        {
+            if (dejavufont.glyphs[j].codepoint == (uint32_t)str[i])
+            {
+                glyph = &dejavufont.glyphs[j];
+                break;
+            }
+        }
+
+        if (!glyph)
+            continue;
+
+        total += glyph->kerning[0].kerning + glyph->advance_x * sx;
+    }
+
+    return total;
 }
 
 void TextRendering_PrintMatrix(GLFWwindow* window, glm::mat4 M, float x, float y, float scale = 1.0f)

@@ -3,6 +3,9 @@
 
 enum class GameStatus
 {
+    MainMenu,
+    UpgradeShop,
+    ConfirmReset,
     Playing,
     Won,
     Lost
@@ -10,7 +13,7 @@ enum class GameStatus
 
 struct GameState
 {
-    GameStatus status = GameStatus::Playing;
+    GameStatus status = GameStatus::MainMenu;
 };
 
 #endif

@@ -2,13 +2,26 @@
 
 #include <cmath>
 
+static float NormalizeAngle(float angle)
+{
+    const float pi = 3.141592f;
+
+    while (angle > pi)
+        angle -= 2.0f * pi;
+
+    while (angle < -pi)
+        angle += 2.0f * pi;
+
+    return angle;
+}
+
 Camera::Camera()
 {
     // x -> Esquerda/Direita, não tem porque alterar inicialmente
     // y -> Altura inicial da câmera/jogador. A não ser que venhamos a implementar pulo, subidas ou descidas, não tem porque mudar
     // z -> usamos 3.5f por ser a distância inicial da câmera no template
     // w -> câmera possui posição no mundo -> w = 1.0f
-    position = glm::vec4(0.0f, 1.7f, 3.5f, 1.0f);
+    position = glm::vec4(0.0f, 1.7f, 27.0f, 1.0f);
 
     // up_vector -> aponta para o "céu" da cena.
     // Como o eixo Y é o eixo vertical do mundo, usamos (0, 1, 0).
@@ -59,6 +72,41 @@ void Camera::AddPitch(float delta)
 
     // 1.55 radianos é quase 90 graus.
     // Isso permite olhar quase totalmente para cima/baixo, mas sem inverter a câmera.
+    const float limit = 1.55f;
+
+    if (pitch > limit)
+        pitch = limit;
+
+    if (pitch < -limit)
+        pitch = -limit;
+
+    UpdateViewVector();
+}
+
+void Camera::LookAt(glm::vec3 target, float max_angle_step)
+{
+    glm::vec3 to_target = target - glm::vec3(position.x, position.y, position.z);
+    float horizontal_len = sqrt(to_target.x*to_target.x + to_target.z*to_target.z);
+
+    if (horizontal_len <= 0.0001f)
+        return;
+
+    float target_yaw = atan2(to_target.z, to_target.x);
+    float target_pitch = atan2(to_target.y, horizontal_len);
+    float yaw_delta = NormalizeAngle(target_yaw - yaw);
+    float pitch_delta = target_pitch - pitch;
+
+    if (max_angle_step > 0.0f)
+    {
+        if (yaw_delta > max_angle_step) yaw_delta = max_angle_step;
+        if (yaw_delta < -max_angle_step) yaw_delta = -max_angle_step;
+        if (pitch_delta > max_angle_step) pitch_delta = max_angle_step;
+        if (pitch_delta < -max_angle_step) pitch_delta = -max_angle_step;
+    }
+
+    yaw += yaw_delta;
+    pitch += pitch_delta;
+
     const float limit = 1.55f;
 
     if (pitch > limit)

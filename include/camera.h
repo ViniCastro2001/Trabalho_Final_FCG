@@ -1,6 +1,7 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 
+#include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
 // Classe para centralizar os dados da câmera.
@@ -20,6 +21,7 @@ public:
     // Funções que serão usadas depois pelo mouse para alterar a direção da câmera
     void AddYaw(float delta);
     void AddPitch(float delta);
+    void LookAt(glm::vec3 target, float max_angle_step);
 
 // Move a posição da câmera na direção dada, escalada por amount.
 // Neste caso, amount normalmente será speed * delta_t.

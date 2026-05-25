@@ -13,11 +13,14 @@ set(SOURCES
   src/stb_image.cpp
   src/glad.c
 
+  src/audio.cpp
   src/camera.cpp
   src/collisions.cpp
+  src/map_view.cpp
   src/player.cpp
   src/scene.cpp
   src/bigfoot.cpp
+  src/upgrades.cpp
 )
 
 cmake_minimum_required(VERSION 3.5.0)
@@ -49,6 +52,10 @@ message(STATUS
 ")
 
 set(EXECUTABLE_NAME main)
+
+if(WIN32)
+  list(APPEND SOURCES resources/app_icon.rc)
+endif()
 
 # Verifica se todos os arquivos fonte estão presentes no diretório
 # atual. Se não estão, avisa sobre CMakeLists mal configurado.
@@ -105,7 +112,7 @@ if(WIN32)
 
   message(STATUS "LIBGLFW = ${LIBGLFW}")
 
-  target_link_libraries(${EXECUTABLE_NAME} ${LIBGLFW} gdi32 opengl32)
+  target_link_libraries(${EXECUTABLE_NAME} ${LIBGLFW} gdi32 opengl32 winmm)
 
 elseif(UNIX)
 
