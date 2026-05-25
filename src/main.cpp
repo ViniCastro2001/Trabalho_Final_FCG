@@ -371,7 +371,7 @@ float g_ShotgunCurrentRecoilDuration = SHOTGUN_RECOIL_DURATION;
 const int BASE_COLLECTIBLE_COUNT = 5;
 const float PRESTIGE_SPEED_STEP = 0.08f;
 const float PRESTIGE_HEALTH_STEP = 0.15f;
-const float PRESTIGE_SPEED_CAP = 1.85f;
+const float PRESTIGE_SPEED_CAP = 1.45f;
 const char* PRESTIGE_SAVE_PATH = "../../data/save_prestige.txt";
 int g_SelectedPrestigeLevel = 0;
 int g_RunPrestigeLevel = 0;
@@ -569,6 +569,11 @@ void SetGameWon()
         g_PrestigeAwardedForCurrentRun = true;
     }
 
+    if (g_SpectatorMode)
+    {
+        g_SelectedPrestigeLevel = ClampPrestigeLevel(g_RunPrestigeLevel + 1);
+        g_SpectatorAutoAdvanceTimer = 2.0f;
+    }
 }
 
 bool IsPlayerInsideSafeZone(glm::vec4 player_position)
@@ -2395,15 +2400,67 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         if (g_PlayerFallAnimationStarted)
             g_PlayerFallTimer += delta_t;
 
+        if (g_GameState.status == GameStatus::Won &&
+            g_SpectatorMode &&
+            g_SpectatorAutoAdvanceTimer >= 0.0f)
+        {
+            g_SpectatorAutoAdvanceTimer -= delta_t;
+
+            if (g_SpectatorAutoAdvanceTimer <= 0.0f)
+            {
+                ResetGame(true);
+                g_SpectatorMode = true;
+                g_SpectatorWantsShoot = false;
+                g_SpectatorRunning = false;
+                g_SpectatorMovementDirection = glm::vec3(0.0f, 0.0f, 0.0f);
+                g_SpectatorLastPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+                g_SpectatorDetourDirection = glm::vec3(0.0f, 0.0f, 0.0f);
+                g_SpectatorHasLastPosition = false;
+                g_SpectatorStuckTimer = 0.0f;
+                g_SpectatorDetourTimer = 0.0f;
+                g_SpectatorAutoAdvanceTimer = -1.0f;
+                g_SpectatorAutoRetryTimer = -1.0f;
+            }
+        }
+
+        if (g_GameState.status == GameStatus::Lost &&
+            g_SpectatorMode &&
+            g_SpectatorAutoRetryTimer >= 0.0f)
+        {
+            g_SpectatorAutoRetryTimer -= delta_t;
+
+            if (g_SpectatorAutoRetryTimer <= 0.0f)
+            {
+                g_SelectedPrestigeLevel = ClampPrestigeLevel(g_RunPrestigeLevel);
+                ResetGame(true);
+                g_SpectatorMode = true;
+                g_SpectatorWantsShoot = false;
+                g_SpectatorRunning = false;
+                g_SpectatorMovementDirection = glm::vec3(0.0f, 0.0f, 0.0f);
+                g_SpectatorLastPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+                g_SpectatorDetourDirection = glm::vec3(0.0f, 0.0f, 0.0f);
+                g_SpectatorHasLastPosition = false;
+                g_SpectatorStuckTimer = 0.0f;
+                g_SpectatorDetourTimer = 0.0f;
+                g_SpectatorAutoAdvanceTimer = -1.0f;
+                g_SpectatorAutoRetryTimer = -1.0f;
+            }
+        }
+
+        UpdateSpectatorController(delta_t);
+
         bool movement_key_pressed =
             glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS ||
             glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS ||
             glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS ||
-            glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+            glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS ||
+            (g_SpectatorMode &&
+             (GetSpectatorMovementDirection().x != 0.0f || GetSpectatorMovementDirection().z != 0.0f));
 
         bool running_key_pressed =
             glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
-            glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+            glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS ||
+            (g_SpectatorMode && IsSpectatorRunning());
 
         if (g_GameState.status == GameStatus::Playing && movement_key_pressed)
         {
@@ -2431,7 +2488,10 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
             for (const Collectible& c : collectibles_before)
                 was_collected.push_back(c.collected);
 
-            g_Player.Update(window, delta_t);
+            if (g_SpectatorMode)
+                g_Player.UpdateAutonomous(GetSpectatorMovementDirection(), IsSpectatorRunning(), delta_t);
+            else
+                g_Player.Update(window, delta_t);
 
             const std::vector<Collectible>& collectibles_after = GetSceneCollectibles();
             for (size_t i = 0; i < collectibles_after.size() && i < was_collected.size(); ++i)
@@ -2954,6 +3014,37 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         char coins_hud[64];
         snprintf(coins_hud, sizeof(coins_hud), "Pontos: %d", GetRawCoins());
         TextRendering_PrintString(window, coins_hud, -0.95f, 0.72f, 1.02f);
+
+        if (g_GameState.status == GameStatus::Playing && g_SpectatorMode)
+        {
+            TextRendering_PrintString(window, "SPECTATOR IA", 0.58f, 0.82f, 1.0f);
+        }
+        else if (g_GameState.status == GameStatus::Won &&
+                 g_SpectatorMode &&
+                 g_SpectatorAutoAdvanceTimer >= 0.0f)
+        {
+            char spectator_next_text[64];
+            snprintf(
+                spectator_next_text,
+                sizeof(spectator_next_text),
+                "SPECTATOR: proximo nivel em %.1fs",
+                g_SpectatorAutoAdvanceTimer
+            );
+            TextRendering_PrintString(window, spectator_next_text, -0.34f, 0.44f, 0.98f);
+        }
+        else if (g_GameState.status == GameStatus::Lost &&
+                 g_SpectatorMode &&
+                 g_SpectatorAutoRetryTimer >= 0.0f)
+        {
+            char spectator_retry_text[64];
+            snprintf(
+                spectator_retry_text,
+                sizeof(spectator_retry_text),
+                "SPECTATOR: tentando de novo em %.1fs",
+                g_SpectatorAutoRetryTimer
+            );
+            TextRendering_PrintString(window, spectator_retry_text, -0.38f, 0.44f, 0.98f);
+        }
 
         if (g_GameState.status == GameStatus::Won)
         {
@@ -3996,7 +4087,7 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         g_ShowInfoText = !g_ShowInfoText;
     }
 
-    // Se o usuário apertar a tecla R, recarregamos os shaders dos arquivos "shader_fragment.glsl" e "shader_vertex.glsl".
+    // Apos vitoria ou derrota, R volta ao menu.
     if (key == GLFW_KEY_R && action == GLFW_PRESS &&
         (status_at_press == GameStatus::Won || status_at_press == GameStatus::Lost))
     {
@@ -4004,6 +4095,30 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         fprintf(stdout,"Voltando ao menu.\n");
         fflush(stdout);
         return;
+    }
+
+    if (key == GLFW_KEY_L && action == GLFW_PRESS)
+    {
+        if (g_GameState.status == GameStatus::Playing)
+        {
+            g_SpectatorMode = !g_SpectatorMode;
+            g_SpectatorWantsShoot = false;
+            g_SpectatorRunning = false;
+            g_SpectatorMovementDirection = glm::vec3(0.0f, 0.0f, 0.0f);
+            g_SpectatorLastPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+            g_SpectatorDetourDirection = glm::vec3(0.0f, 0.0f, 0.0f);
+            g_SpectatorHasLastPosition = false;
+            g_SpectatorStuckTimer = 0.0f;
+            g_SpectatorDetourTimer = 0.0f;
+            g_SpectatorAutoAdvanceTimer = -1.0f;
+            g_SpectatorAutoRetryTimer = -1.0f;
+            fprintf(stdout, "Modo Spectator IA: %s\n", g_SpectatorMode ? "ON" : "OFF");
+        }
+        else
+        {
+            fprintf(stdout, "Modo Spectator IA so pode ser alternado durante a partida.\n");
+        }
+        fflush(stdout);
     }
 
     if (key == GLFW_KEY_F5 && action == GLFW_PRESS)
@@ -4327,4 +4442,3 @@ void PrintObjModelInfo(ObjModel* model)
 
 // set makeprg=cd\ ..\ &&\ make\ run\ >/dev/null
 // vim: set spell spelllang=pt_br :
-

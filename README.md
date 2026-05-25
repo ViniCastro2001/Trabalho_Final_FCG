@@ -1,5 +1,35 @@
-# Computação Gráfica e Visualização I (INF01047) - INF/UFRGS
+# Pe Grande do Vale
 
-Este repositório contém o código base para o trabalho final. O enunciado completo do trabalho final está no Moodle:
+Jogo em primeira pessoa desenvolvido para o trabalho final de Computacao
+Grafica e Visualizacao I (INF01047) - INF/UFRGS.
 
-https://moodle.ufrgs.br/mod/assign/view.php?id=6018620
+## Build
+
+```powershell
+cmake --preset default-config
+cmake --build --preset default-build
+```
+
+## Executar
+
+```powershell
+.\bin\Debug\main.exe
+```
+
+O executavel espera encontrar os assets em `data/` e os shaders ativos em
+`data/shaders/`.
+
+## Controles principais
+
+- WASD: mover
+- Mouse: olhar
+- Shift: correr
+- Botao esquerdo: atirar
+- U: abrir loja de upgrades
+- M: abrir mapa durante a partida
+- Space: iniciar ou selecionar
+- R: voltar ao menu apos vitoria ou derrota
+- ESC: soltar o mouse
+
+O progresso de runtime e salvo em `data/save_prestige.txt`. Esse arquivo nao
+deve ser versionado.

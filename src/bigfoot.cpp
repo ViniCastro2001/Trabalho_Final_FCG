@@ -124,7 +124,7 @@ Bigfoot::Bigfoot()
     position = ChooseSafeBigfootSpawn(radius);
 
     // Velocidade de perseguição.
-    speed = 7.5f;
+    speed = 15.0f;
 
     // Distância em que consideramos que ele alcançou o player.
     attack_range = 1.4f;
@@ -319,7 +319,7 @@ void Bigfoot::StartFleeing(glm::vec3 player_position)
 
     // Deslocamento lateral aleatório para tornar a curva menos previsível.
     float side_random = (float)rand() / (float)RAND_MAX;
-    float side_offset = -20.0f + side_random * 40.0f;
+    float side_offset = -28.0f + side_random * 56.0f;
 
     // P1 e P2 puxam a trajetória para os lados, formando uma curva.
     bezier_p1 = bezier_p0
