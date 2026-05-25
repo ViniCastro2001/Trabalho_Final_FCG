@@ -1,9 +1,19 @@
 build/
+build-codex/
 bin/
+dist/
 .vscode/
+.claude/
+portas_abertas_reference/
+
+data/save_prestige.txt
 
 *.exe
+*.out
+*.dll
+*.o
+*.obj
+!data/models/**/*.obj
 *.ilk
 *.pdb
 *.log
-/portas_abertas_reference
