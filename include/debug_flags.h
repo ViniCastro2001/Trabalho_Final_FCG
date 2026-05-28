@@ -17,4 +17,8 @@
 // Defina como 0 para desabilitar completamente o atalho de debug.
 #define SHOW_COORDS_DEBUG_ENABLED 1
 
+// Permite alternar um "modo dia" de debug (céu claro + iluminação solar) com a
+// tecla F2. Defina como 0 para remover completamente o atalho.
+#define DAY_MODE_DEBUG_ENABLED 1
+
 #endif

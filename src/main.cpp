@@ -299,6 +299,9 @@ GLint g_light_range_uniform = -1;
 GLint g_num_occluders_uniform = -1;
 GLint g_occluder_min_uniform = -1;
 GLint g_occluder_max_uniform = -1;
+#if DAY_MODE_DEBUG_ENABLED
+GLint g_day_mode_uniform = -1;
+#endif
 
 // Número de texturas carregadas pela função LoadTextureImage()
 GLuint g_NumLoadedTextures = 0;
@@ -368,6 +371,9 @@ bool g_BigfootFrozen = false;
 #endif
 #if SHOW_COORDS_DEBUG_ENABLED
 bool g_ShowCoordsDebug = false;
+#endif
+#if DAY_MODE_DEBUG_ENABLED
+bool g_DayMode = false;
 #endif
 bool g_InfiniteAdrenalineCheat = false;
 bool g_SpectatorMode = false;
@@ -2331,6 +2337,13 @@ void UpdateLightingUniforms(glm::vec3 viewer_position)
     glUniform1i(g_num_occluders_uniform, occ_count);
     glUniform3fv(g_occluder_min_uniform, MAX_OCCLUDERS_CPU, occ_min);
     glUniform3fv(g_occluder_max_uniform, MAX_OCCLUDERS_CPU, occ_max);
+
+#if DAY_MODE_DEBUG_ENABLED
+    // Modo dia (debug): liga o sol direcional e a iluminação ambiente diurna
+    // dentro do fragment shader. Reaproveita os mesmos oclusores AABB para as
+    // sombras projetadas pelo sol.
+    glUniform1i(g_day_mode_uniform, g_DayMode ? 1 : 0);
+#endif
 }
 
 // =============================================================
@@ -2758,7 +2771,12 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         // Conversaremos sobre sistemas de cores nas aulas de Modelos de Iluminação.
         //
         //           R     G     B     A
-        glClearColor(0.015f, 0.018f, 0.026f, 1.0f);
+#if DAY_MODE_DEBUG_ENABLED
+        if (g_DayMode)
+            glClearColor(0.53f, 0.75f, 0.92f, 1.0f); // céu de dia, azul claro
+        else
+#endif
+            glClearColor(0.015f, 0.018f, 0.026f, 1.0f);
 
         // "Pintamos" todos os pixels do framebuffer com a cor definida acima,
         // e também resetamos todos os pixels do Z-buffer (depth buffer).
@@ -3460,6 +3478,9 @@ void LoadShadersFromFiles()
     g_num_occluders_uniform   = glGetUniformLocation(g_GpuProgramID, "u_num_occluders");
     g_occluder_min_uniform    = glGetUniformLocation(g_GpuProgramID, "u_occluder_min");
     g_occluder_max_uniform    = glGetUniformLocation(g_GpuProgramID, "u_occluder_max");
+#if DAY_MODE_DEBUG_ENABLED
+    g_day_mode_uniform        = glGetUniformLocation(g_GpuProgramID, "u_day_mode");
+#endif
 
     // Variáveis em "shader_fragment.glsl" para acesso das imagens de textura
     glUseProgram(g_GpuProgramID);
@@ -4324,6 +4345,15 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
     {
         g_ShowCoordsDebug = !g_ShowCoordsDebug;
         fprintf(stdout, "Debug: Coordenadas do jogador %s\n", g_ShowCoordsDebug ? "ON" : "OFF");
+        fflush(stdout);
+    }
+#endif
+
+#if DAY_MODE_DEBUG_ENABLED
+    if (key == GLFW_KEY_F2 && action == GLFW_PRESS)
+    {
+        g_DayMode = !g_DayMode;
+        fprintf(stdout, "Debug: Modo Dia %s\n", g_DayMode ? "ON" : "OFF");
         fflush(stdout);
     }
 #endif

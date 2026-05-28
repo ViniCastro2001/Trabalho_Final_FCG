@@ -78,6 +78,9 @@ uniform int  u_num_occluders;
 uniform vec3 u_occluder_min[MAX_OCCLUDERS];
 uniform vec3 u_occluder_max[MAX_OCCLUDERS];
 
+// Modo dia (debug): quando 1, liga um sol direcional + ceu claro.
+uniform int u_day_mode;
+
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
 
@@ -344,13 +347,48 @@ void main()
         accum += u_light_color[i] * lambert_n * atten * shadow;
     }
 
+    // Modo dia (debug): sol direcional. Como a luz vem do infinito, o raio de
+    // sombra segue na direcao do sol e qualquer oclusor atingido (t > 0) coloca
+    // o fragmento em sombra. O ceu passa a iluminar o ambiente de forma intensa.
+    if (u_day_mode == 1)
+    {
+        vec3 sun_dir   = normalize(vec3(0.35, 1.0, 0.20)); // da superficie ATE o sol
+        vec3 sun_color = vec3(1.0, 0.96, 0.86);
+        float sun_intensity = 1.15;
+
+        float sun_shadow = 1.0;
+        for (int j = 0; j < u_num_occluders; ++j)
+        {
+            float t;
+            if (RayHitsAABB(frag_pos, sun_dir, u_occluder_min[j], u_occluder_max[j], t))
+            {
+                if (t > 0.0)
+                {
+                    sun_shadow = 0.0;
+                    break;
+                }
+            }
+        }
+
+        float sun_lambert = max(0.0, dot(n.xyz, sun_dir));
+        accum += sun_color * sun_lambert * sun_intensity * sun_shadow;
+
+        // Ceu claro funciona como luz ambiente forte durante o dia.
+        ambient = vec3(0.35, 0.37, 0.42);
+    }
+
     vec3 lit_color = Kd0 * (accum + ambient);
 
     // Neblina simples por distancia: ajuda a esconder o fim do mapa e melhora
     // o clima de perseguicao sem exigir novos assets.
     float camera_distance = length(camera_position.xyz - p.xyz);
-    float fog_factor = smoothstep(7.0, 42.0, camera_distance);
-    vec3 fog_color = vec3(0.018, 0.021, 0.030);
+    // No modo dia a neblina tem alcance bem maior (so aparece bem longe),
+    // deixando a cena clara; a noite ela comeca perto para esconder o mapa.
+    float fog_factor = (u_day_mode == 1)
+        ? smoothstep(40.0, 140.0, camera_distance)
+        : smoothstep(7.0, 42.0, camera_distance);
+    // No modo dia a neblina combina com o ceu azul; a noite, fica escura.
+    vec3 fog_color = (u_day_mode == 1) ? vec3(0.53, 0.75, 0.92) : vec3(0.018, 0.021, 0.030);
 
     if ( object_id == SAFE_ZONE || object_id == BIGFOOT_EYES || object_id == HUD_BAR_BACK || object_id == HUD_BAR_FILL || object_id == LAMP_LIGHT || object_id == MONSTER_DRINK || object_id == MAP_MARKER_PLAYER || object_id == MAP_MARKER_BIGFOOT || object_id == MAP_MARKER_ITEM )
     {
