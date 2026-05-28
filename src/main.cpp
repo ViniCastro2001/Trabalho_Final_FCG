@@ -146,6 +146,8 @@ void DrawCampusPine(glm::vec3 position, float scale);
 void DrawCampusCar(glm::vec3 position, float yaw, int body_material);
 void DrawCampusMap();
 void DrawSafeZoneBeacon(const SafeZone& safe_zone, float time_seconds);
+void DrawLightPost(const LightPost& post);
+void UpdateLightingUniforms(glm::vec3 viewer_position);
 GLuint LoadShader_Vertex(const char* filename);   // Carrega um vertex shader
 GLuint LoadShader_Fragment(const char* filename); // Carrega um fragment shader
 void LoadShader(const char* filename, GLuint shader_id); // Função utilizada pelas duas acima
@@ -286,6 +288,18 @@ GLint g_bbox_max_uniform;
 GLint g_map_view_uniform;
 #endif
 
+// Locations dos uniforms de iluminação por postes de luz.
+const int MAX_LIGHTS_CPU = 8;
+const int MAX_OCCLUDERS_CPU = 32;
+GLint g_num_lights_uniform = -1;
+GLint g_light_pos_uniform = -1;
+GLint g_light_color_uniform = -1;
+GLint g_light_intensity_uniform = -1;
+GLint g_light_range_uniform = -1;
+GLint g_num_occluders_uniform = -1;
+GLint g_occluder_min_uniform = -1;
+GLint g_occluder_max_uniform = -1;
+
 // Número de texturas carregadas pela função LoadTextureImage()
 GLuint g_NumLoadedTextures = 0;
 
@@ -349,6 +363,12 @@ const int OBJECT_WEAPON_WOOD = 26;
 const int OBJECT_WEAPON_ACCENT = 27;
 
 bool g_PlayerInvisibleToBigfoot = false;
+#if BIGFOOT_FREEZE_DEBUG_ENABLED
+bool g_BigfootFrozen = false;
+#endif
+#if SHOW_COORDS_DEBUG_ENABLED
+bool g_ShowCoordsDebug = false;
+#endif
 bool g_InfiniteAdrenalineCheat = false;
 bool g_SpectatorMode = false;
 bool g_SpectatorWantsShoot = false;
@@ -2130,6 +2150,11 @@ void DrawCampusMap()
     DrawCampusBox(glm::vec3(84.0f, 2.8f, -53.0f), glm::vec3(2.0f, 6.4f, 218.0f), 0.0f, OBJECT_SHOTGUN);
     DrawCampusBox(glm::vec3(0.0f, 2.8f, 56.0f), glm::vec3(168.0f, 6.4f, 2.0f), 0.0f, OBJECT_SHOTGUN);
     DrawCampusBox(glm::vec3(0.0f, 2.8f, -162.0f), glm::vec3(168.0f, 6.4f, 2.0f), 0.0f, OBJECT_SHOTGUN);
+
+    // Postes de luz: emitem a iluminação do cenário inteiro.
+    const std::vector<LightPost>& light_posts = GetSceneLightPosts();
+    for (const LightPost& post : light_posts)
+        DrawLightPost(post);
 }
 
 void DrawSafeZoneBeacon(const SafeZone& safe_zone, float time_seconds)
@@ -2188,6 +2213,124 @@ void DrawSafeZoneBeacon(const SafeZone& safe_zone, float time_seconds)
         0.0f,
         OBJECT_SAFE_ZONE
     );
+}
+
+void DrawLightPost(const LightPost& post)
+{
+    // Coluna fina vertical.
+    glm::vec3 bulb_pos = post.base + post.bulb_offset;
+    float pole_height = post.bulb_offset.y;
+
+    DrawCampusBox(
+        glm::vec3(post.base.x, pole_height * 0.5f, post.base.z),
+        glm::vec3(0.22f, pole_height, 0.22f),
+        0.0f,
+        OBJECT_METAL_ROOF);
+
+    // Braço horizontal curto até a lâmpada.
+    DrawCampusBox(
+        glm::vec3(post.base.x, bulb_pos.y - 0.10f, post.base.z),
+        glm::vec3(0.55f, 0.18f, 0.55f),
+        0.0f,
+        OBJECT_METAL_ROOF);
+
+    // Lâmpada: cubo emissivo (OBJECT_LAMP_LIGHT já é tratado como
+    // cor pura no fragment shader, sem ser afetado pela iluminação).
+    DrawCampusBox(
+        glm::vec3(bulb_pos.x, bulb_pos.y - 0.30f, bulb_pos.z),
+        glm::vec3(0.45f, 0.40f, 0.45f),
+        0.0f,
+        OBJECT_LAMP_LIGHT);
+}
+
+void UpdateLightingUniforms(glm::vec3 viewer_position)
+{
+    // Seleciona os MAX_LIGHTS_CPU postes mais próximos do observador
+    // e os MAX_OCCLUDERS_CPU obstáculos mais próximos como oclusores.
+    const std::vector<LightPost>& posts = GetSceneLightPosts();
+    const std::vector<BoxObstacle>& obstacles = GetSceneObstacles();
+
+    struct IndexedDist { float d2; int idx; };
+    std::vector<IndexedDist> ranked_lights;
+    ranked_lights.reserve(posts.size());
+
+    for (int i = 0; i < (int)posts.size(); ++i)
+    {
+        glm::vec3 bulb = posts[i].base + posts[i].bulb_offset;
+        glm::vec3 diff = bulb - viewer_position;
+        ranked_lights.push_back({ diff.x*diff.x + diff.y*diff.y + diff.z*diff.z, i });
+    }
+
+    int light_count = std::min((int)ranked_lights.size(), MAX_LIGHTS_CPU);
+    std::partial_sort(ranked_lights.begin(),
+                      ranked_lights.begin() + light_count,
+                      ranked_lights.end(),
+                      [](const IndexedDist& a, const IndexedDist& b){ return a.d2 < b.d2; });
+
+    float light_pos[MAX_LIGHTS_CPU * 3] = {0};
+    float light_color[MAX_LIGHTS_CPU * 3] = {0};
+    float light_intensity[MAX_LIGHTS_CPU] = {0};
+    float light_range[MAX_LIGHTS_CPU] = {0};
+
+    for (int k = 0; k < light_count; ++k)
+    {
+        const LightPost& p = posts[ranked_lights[k].idx];
+        glm::vec3 bulb = p.base + p.bulb_offset;
+        light_pos[k*3+0] = bulb.x;
+        light_pos[k*3+1] = bulb.y;
+        light_pos[k*3+2] = bulb.z;
+        light_color[k*3+0] = p.color.r;
+        light_color[k*3+1] = p.color.g;
+        light_color[k*3+2] = p.color.b;
+        light_intensity[k] = p.intensity;
+        light_range[k] = p.range;
+    }
+
+    glUniform1i(g_num_lights_uniform, light_count);
+    glUniform3fv(g_light_pos_uniform, MAX_LIGHTS_CPU, light_pos);
+    glUniform3fv(g_light_color_uniform, MAX_LIGHTS_CPU, light_color);
+    glUniform1fv(g_light_intensity_uniform, MAX_LIGHTS_CPU, light_intensity);
+    glUniform1fv(g_light_range_uniform, MAX_LIGHTS_CPU, light_range);
+
+    // Oclusores: filtra muros externos enormes (que prejudicariam o teste
+    // de sombra perto da câmera) e ranqueia por proximidade.
+    std::vector<IndexedDist> ranked_occ;
+    ranked_occ.reserve(obstacles.size());
+
+    for (int i = 0; i < (int)obstacles.size(); ++i)
+    {
+        const BoxObstacle& o = obstacles[i];
+
+        // Pular muros externos do mapa: dimensão > 100 em algum eixo horizontal.
+        if (o.size.x > 100.0f || o.size.z > 100.0f)
+            continue;
+
+        glm::vec3 diff = o.center - viewer_position;
+        ranked_occ.push_back({ diff.x*diff.x + diff.z*diff.z, i });
+    }
+
+    int occ_count = std::min((int)ranked_occ.size(), MAX_OCCLUDERS_CPU);
+    std::partial_sort(ranked_occ.begin(),
+                      ranked_occ.begin() + occ_count,
+                      ranked_occ.end(),
+                      [](const IndexedDist& a, const IndexedDist& b){ return a.d2 < b.d2; });
+
+    float occ_min[MAX_OCCLUDERS_CPU * 3] = {0};
+    float occ_max[MAX_OCCLUDERS_CPU * 3] = {0};
+
+    for (int k = 0; k < occ_count; ++k)
+    {
+        const BoxObstacle& o = obstacles[ranked_occ[k].idx];
+        glm::vec3 half = o.size * 0.5f;
+        glm::vec3 lo = o.center - half;
+        glm::vec3 hi = o.center + half;
+        occ_min[k*3+0] = lo.x; occ_min[k*3+1] = lo.y; occ_min[k*3+2] = lo.z;
+        occ_max[k*3+0] = hi.x; occ_max[k*3+1] = hi.y; occ_max[k*3+2] = hi.z;
+    }
+
+    glUniform1i(g_num_occluders_uniform, occ_count);
+    glUniform3fv(g_occluder_min_uniform, MAX_OCCLUDERS_CPU, occ_min);
+    glUniform3fv(g_occluder_max_uniform, MAX_OCCLUDERS_CPU, occ_max);
 }
 
 // =============================================================
@@ -2511,6 +2654,9 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
 #if MAP_VIEW_ENABLED
             && !g_MapView.IsActive()
 #endif
+#if BIGFOOT_FREEZE_DEBUG_ENABLED
+            && !g_BigfootFrozen
+#endif
            )
         {
             for (BigfootInstance& instance : g_Bigfoots)
@@ -2712,6 +2858,11 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         #define PLANE  2
         #define SAFE_ZONE 3
         #define BIGFOOT 4
+
+        // Atualiza os uniforms de iluminação por postes de luz a cada frame,
+        // selecionando as luzes/oclusores mais próximos do player.
+        UpdateLightingUniforms(glm::vec3(camera_position_c.x, camera_position_c.y, camera_position_c.z));
+
         DrawCampusMap();
 
 
@@ -2843,6 +2994,20 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         // Imprimimos na tela informação sobre o número de quadros renderizados
         // por segundo (frames per second).
         TextRendering_ShowFramesPerSecond(window);
+
+#if SHOW_COORDS_DEBUG_ENABLED
+        if (g_ShowCoordsDebug)
+        {
+            glm::vec4 dbg_pos = g_Camera.GetPosition();
+            char coords_buf[64];
+            int coords_chars = snprintf(coords_buf, sizeof(coords_buf),
+                "X=%.2f Y=%.2f Z=%.2f", dbg_pos.x, dbg_pos.y, dbg_pos.z);
+            float lh = TextRendering_LineHeight(window);
+            float cw = TextRendering_CharWidth(window);
+            TextRendering_PrintString(window, coords_buf,
+                1.0f - (coords_chars + 1) * cw, 1.0f - 2.0f * lh, 1.0f);
+        }
+#endif
 
         if (g_GameState.status == GameStatus::MainMenu)
         {
@@ -3286,6 +3451,15 @@ void LoadShadersFromFiles()
 #if MAP_VIEW_ENABLED
     g_map_view_uniform   = glGetUniformLocation(g_GpuProgramID, "u_map_view_active");
 #endif
+
+    g_num_lights_uniform      = glGetUniformLocation(g_GpuProgramID, "u_num_lights");
+    g_light_pos_uniform       = glGetUniformLocation(g_GpuProgramID, "u_light_pos");
+    g_light_color_uniform     = glGetUniformLocation(g_GpuProgramID, "u_light_color");
+    g_light_intensity_uniform = glGetUniformLocation(g_GpuProgramID, "u_light_intensity");
+    g_light_range_uniform     = glGetUniformLocation(g_GpuProgramID, "u_light_range");
+    g_num_occluders_uniform   = glGetUniformLocation(g_GpuProgramID, "u_num_occluders");
+    g_occluder_min_uniform    = glGetUniformLocation(g_GpuProgramID, "u_occluder_min");
+    g_occluder_max_uniform    = glGetUniformLocation(g_GpuProgramID, "u_occluder_max");
 
     // Variáveis em "shader_fragment.glsl" para acesso das imagens de textura
     glUseProgram(g_GpuProgramID);
@@ -4133,6 +4307,24 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         g_GameState.status == GameStatus::Playing)
     {
         g_MapView.Toggle();
+    }
+#endif
+
+#if BIGFOOT_FREEZE_DEBUG_ENABLED
+    if (key == GLFW_KEY_B && action == GLFW_PRESS)
+    {
+        g_BigfootFrozen = !g_BigfootFrozen;
+        fprintf(stdout, "Debug: Pe Grande %s\n", g_BigfootFrozen ? "CONGELADO" : "ATIVO");
+        fflush(stdout);
+    }
+#endif
+
+#if SHOW_COORDS_DEBUG_ENABLED
+    if (key == GLFW_KEY_F3 && action == GLFW_PRESS)
+    {
+        g_ShowCoordsDebug = !g_ShowCoordsDebug;
+        fprintf(stdout, "Debug: Coordenadas do jogador %s\n", g_ShowCoordsDebug ? "ON" : "OFF");
+        fflush(stdout);
     }
 #endif
 }

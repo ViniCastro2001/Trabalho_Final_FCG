@@ -63,12 +63,43 @@ uniform sampler2D TextureImage0;
 uniform sampler2D TextureImage1;
 uniform sampler2D TextureImage2;
 
+// Iluminação por postes de luz: até MAX_LIGHTS postes ativos por frame
+// e até MAX_OCCLUDERS AABBs usadas para teste de sombra analítico.
+#define MAX_LIGHTS 8
+#define MAX_OCCLUDERS 32
+
+uniform int  u_num_lights;
+uniform vec3 u_light_pos[MAX_LIGHTS];
+uniform vec3 u_light_color[MAX_LIGHTS];
+uniform float u_light_intensity[MAX_LIGHTS];
+uniform float u_light_range[MAX_LIGHTS];
+
+uniform int  u_num_occluders;
+uniform vec3 u_occluder_min[MAX_OCCLUDERS];
+uniform vec3 u_occluder_max[MAX_OCCLUDERS];
+
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
 
 // Constantes
 #define M_PI   3.14159265358979323846
 #define M_PI_2 1.57079632679489661923
+
+// Interseção raio-AABB pelo método "slab". Retorna true se o raio
+// (origem ro, direção rd normalizada) intersecta a caixa [bmin, bmax];
+// neste caso, t_enter recebe o parâmetro de entrada no volume.
+bool RayHitsAABB(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax, out float t_enter)
+{
+    vec3 inv = 1.0 / rd;
+    vec3 t0s = (bmin - ro) * inv;
+    vec3 t1s = (bmax - ro) * inv;
+    vec3 tsmaller = min(t0s, t1s);
+    vec3 tbigger  = max(t0s, t1s);
+    float tmin = max(max(tsmaller.x, tsmaller.y), tsmaller.z);
+    float tmax = min(min(tbigger.x,  tbigger.y),  tbigger.z);
+    t_enter = tmin;
+    return tmax >= max(tmin, 0.0);
+}
 
 void main()
 {
@@ -271,10 +302,49 @@ void main()
         // Paredes/blocos: textura de tijolos.
         Kd0 = texture(TextureImage0, texcoords).rgb;
     }
-    // Equação de Iluminação
-    float lambert = max(0,dot(n,l));
+    // Equação de Iluminação: soma da contribuição de todos os postes de luz
+    // ativos, com atenuação por distância e teste de sombra por interseção
+    // raio-AABB contra os obstáculos do cenário.
+    vec3 ambient = vec3(0.020, 0.022, 0.030); // ambiente noturno bem fraco
+    vec3 accum = vec3(0.0);
+    vec3 frag_pos = p.xyz + n.xyz * 0.02; // offset para evitar self-shadow (acne)
 
-    vec3 lit_color = Kd0 * (lambert * 0.62 + 0.045);
+    for (int i = 0; i < u_num_lights; ++i)
+    {
+        vec3 Lpos = u_light_pos[i];
+        vec3 toL  = Lpos - frag_pos;
+        float dist = length(toL);
+
+        if (dist > u_light_range[i])
+            continue;
+
+        vec3 Ldir = toL / dist;
+
+        // Atenuação física (1 / (1 + k*d^2)) com corte suave no range máximo.
+        float atten = u_light_intensity[i] / (1.0 + 0.18 * dist * dist);
+        atten *= 1.0 - smoothstep(u_light_range[i] * 0.65, u_light_range[i], dist);
+
+        // Teste de sombra: raio do fragmento até a luz; se cruzar algum AABB
+        // antes de chegar lá, fica em sombra.
+        float shadow = 1.0;
+        for (int j = 0; j < u_num_occluders; ++j)
+        {
+            float t;
+            if (RayHitsAABB(frag_pos, Ldir, u_occluder_min[j], u_occluder_max[j], t))
+            {
+                if (t > 0.0 && t < dist - 0.05)
+                {
+                    shadow = 0.0;
+                    break;
+                }
+            }
+        }
+
+        float lambert_n = max(0.0, dot(n.xyz, Ldir));
+        accum += u_light_color[i] * lambert_n * atten * shadow;
+    }
+
+    vec3 lit_color = Kd0 * (accum + ambient);
 
     // Neblina simples por distancia: ajuda a esconder o fim do mapa e melhora
     // o clima de perseguicao sem exigir novos assets.

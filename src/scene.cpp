@@ -202,3 +202,25 @@ const SafeZone& GetSafeZone()
 
     return safe_zone;
 }
+
+const std::vector<LightPost>& GetSceneLightPosts()
+{
+    // Cor amarelo-quente padrão das lâmpadas de sódio; vermelha junto da zona segura.
+    static const glm::vec3 warm_yellow = glm::vec3(1.00f, 0.82f, 0.45f);
+    static const glm::vec3 safe_red    = glm::vec3(1.00f, 0.30f, 0.20f);
+    static const glm::vec3 bulb_offset = glm::vec3(0.0f, 4.6f, 0.0f);
+
+    static const std::vector<LightPost> light_posts = {
+        { glm::vec3( -4.57f, 0.0f,  -6.63f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3(  4.35f, 0.0f, -31.73f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3( -4.29f, 0.0f, -46.81f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3(-24.44f, 0.0f, -68.39f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3( 16.42f, 0.0f, -95.51f), bulb_offset, safe_red,    28.0f, 28.0f },
+        { glm::vec3( 28.50f, 0.0f, -59.97f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3(-35.55f, 0.0f, -103.25f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3( 29.48f, 0.0f,  -7.34f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3( 21.44f, 0.0f, -13.40f), bulb_offset, warm_yellow, 28.0f, 28.0f }
+    };
+
+    return light_posts;
+}

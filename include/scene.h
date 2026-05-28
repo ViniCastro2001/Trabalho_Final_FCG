@@ -29,6 +29,17 @@ struct SafeZone
     glm::vec3 size;
 };
 
+// Poste de luz: emite luz pontual com atenuação. Tudo no jogo é iluminado
+// pelos postes; a lâmpada fica em "base + bulb_offset".
+struct LightPost
+{
+    glm::vec3 base;        // posição da base do poste no chão
+    glm::vec3 bulb_offset; // deslocamento até a lâmpada (geralmente (0, h, 0))
+    glm::vec3 color;       // cor RGB da luz
+    float intensity;       // multiplicador de brilho
+    float range;           // distância máxima de iluminação
+};
+
 // Retorna a lista de blocos retangulares do cenário.
 const std::vector<BoxObstacle>& GetSceneObstacles();
 
@@ -39,5 +50,8 @@ std::vector<Collectible>& GetSceneCollectibles();
 // Retorna a zona segura/final do cenário.
 // É const porque a posição e o tamanho da zona não mudam durante o jogo.
 const SafeZone& GetSafeZone();
+
+// Retorna os postes de luz espalhados pelo mapa.
+const std::vector<LightPost>& GetSceneLightPosts();
 
 #endif
