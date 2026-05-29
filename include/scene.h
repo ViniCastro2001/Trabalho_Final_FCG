@@ -43,6 +43,11 @@ struct LightPost
 // Retorna a lista de blocos retangulares do cenário.
 const std::vector<BoxObstacle>& GetSceneObstacles();
 
+// Oclusores usados APENAS para o teste de sombra da iluminação (não geram
+// colisão). Ex.: os tetos dos prédios-corredor, que precisam bloquear a luz
+// que entra por cima sem fechar o corredor caminhável.
+const std::vector<BoxObstacle>& GetSceneLightOccluders();
+
 // Retorna a lista de itens coletáveis do cenário.
 // Não é const porque precisamos marcar itens como coletados.
 std::vector<Collectible>& GetSceneCollectibles();

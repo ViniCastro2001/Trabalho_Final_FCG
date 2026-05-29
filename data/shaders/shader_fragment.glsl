@@ -48,6 +48,7 @@ uniform mat4 projection;
 #define WEAPON_METAL 25
 #define WEAPON_WOOD 26
 #define WEAPON_ACCENT 27
+#define ROCKY_FLOOR 28
 
 uniform int object_id;
 
@@ -62,6 +63,7 @@ uniform vec4 bbox_max;
 uniform sampler2D TextureImage0;
 uniform sampler2D TextureImage1;
 uniform sampler2D TextureImage2;
+uniform sampler2D TextureImage3;
 
 // Iluminação por postes de luz: até MAX_LIGHTS postes ativos por frame
 // e até MAX_OCCLUDERS AABBs usadas para teste de sombra analítico.
@@ -300,10 +302,27 @@ void main()
     {
         Kd0 = vec3(1.00, 0.88, 0.10); // amarelo
     }
+    else if ( object_id == ROCKY_FLOOR )
+    {
+        // Piso interno dos prédios: textura de rocha, tilada em coordenadas
+        // de mundo para manter a escala constante em qualquer tamanho de piso.
+        Kd0 = texture(TextureImage3, position_world.xz * 0.25).rgb;
+    }
     else if ( object_id == WALL )
     {
-        // Paredes/blocos: textura de tijolos.
-        Kd0 = texture(TextureImage0, texcoords).rgb;
+        // Paredes/blocos: textura de tijolos com mapeamento triplanar em
+        // coordenadas de mundo. Mantém a densidade dos tijolos constante
+        // independente da escala da caixa (evita esticar nas portas/ombreiras).
+        vec3 wp = position_world.xyz * 0.5;
+        vec3 an = abs(n.xyz);
+        vec2 uvw;
+        if (an.x >= an.y && an.x >= an.z)
+            uvw = wp.zy;   // face voltada para X
+        else if (an.z >= an.x && an.z >= an.y)
+            uvw = wp.xy;   // face voltada para Z
+        else
+            uvw = wp.xz;   // face voltada para Y (topo/base)
+        Kd0 = texture(TextureImage0, uvw).rgb;
     }
     // Equação de Iluminação: soma da contribuição de todos os postes de luz
     // ativos, com atenuação por distância e teste de sombra por interseção

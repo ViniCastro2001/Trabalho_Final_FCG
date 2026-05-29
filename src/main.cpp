@@ -141,6 +141,7 @@ void DrawFirstPersonWeapon(glm::vec4 camera_position, glm::vec4 camera_view, glm
 void DrawCampusSurface(glm::vec3 center, glm::vec3 size, float yaw, int material);
 void DrawCampusBox(glm::vec3 center, glm::vec3 size, float yaw, int material);
 void DrawCampusBuilding(glm::vec3 center, glm::vec3 size, float yaw);
+void DrawCampusCorridorBuilding(glm::vec3 center, glm::vec3 size, float yaw);
 void DrawCampusTree(glm::vec3 position, float scale);
 void DrawCampusPine(glm::vec3 position, float scale);
 void DrawCampusCar(glm::vec3 position, float yaw, int body_material);
@@ -364,6 +365,7 @@ const int OBJECT_MONSTER_DRINK = 21;
 const int OBJECT_WEAPON_METAL = 25;
 const int OBJECT_WEAPON_WOOD = 26;
 const int OBJECT_WEAPON_ACCENT = 27;
+const int OBJECT_ROCKY_FLOOR = 28;
 
 bool g_PlayerInvisibleToBigfoot = false;
 #if BIGFOOT_FREEZE_DEBUG_ENABLED
@@ -679,7 +681,12 @@ void RandomizeCollectibleSpawns()
         {  35.0f,  44.0f, -84.0f,   4.0f }, // faixa aberta leste
         { -18.0f,  18.0f, -74.0f, -66.0f }, // corredor entre blocos
         { -18.0f,  18.0f, -53.0f, -47.0f },
-        { -18.0f,  18.0f, -32.0f, -26.0f }
+        { -18.0f,  18.0f, -32.0f, -26.0f },
+        // Interior dos 3 prédios-corredor da direita. A faixa de x fica estreita
+        // (~32) para respeitar a folga das paredes laterais; z recuado das portas.
+        {  31.7f,  32.3f, -28.0f, -12.0f }, // dentro do prédio A
+        {  31.7f,  32.3f, -53.0f, -43.0f }, // dentro do prédio B
+        {  31.7f,  32.3f, -77.0f, -67.0f }  // dentro do prédio C
     };
 
     static const glm::vec3 fallback_positions[] = {
@@ -1938,6 +1945,67 @@ void DrawCampusBuilding(glm::vec3 center, glm::vec3 size, float yaw)
     );
 }
 
+// Prédio oco com corredor caminhável ao longo do eixo Z: duas paredes laterais,
+// telhado e, em cada extremidade, uma fachada com vão de porta central (duas
+// ombreiras + verga). Escrita para yaw == 0, como os prédios da fileira da direita.
+// A colisão correspondente fica em GetSceneObstacles() (src/scene.cpp).
+void DrawCampusCorridorBuilding(glm::vec3 center, glm::vec3 size, float yaw)
+{
+    const float kWallThickness = 1.5f;  // espessura das paredes laterais (X)
+    const float kDoorWidth     = 2.5f;  // largura do vão de porta (X)
+    const float kFacadeDepth   = 1.0f;  // espessura das fachadas/ombreiras (Z)
+    const float kDoorHeight    = 2.6f;  // altura livre da porta (Y)
+
+    const float corridor_width = size.x - 2.0f * kWallThickness; // miolo caminhável (X)
+    const float side_offset    = corridor_width * 0.5f + kWallThickness * 0.5f;
+    const float jamb_width     = (corridor_width - kDoorWidth) * 0.5f;
+    const float jamb_offset    = kDoorWidth * 0.5f + jamb_width * 0.5f;
+
+    // Paredes laterais (ao longo de todo o comprimento Z).
+    DrawCampusBox(glm::vec3(center.x - side_offset, center.y, center.z), glm::vec3(kWallThickness, size.y, size.z), yaw, OBJECT_WALL);
+    DrawCampusBox(glm::vec3(center.x + side_offset, center.y, center.z), glm::vec3(kWallThickness, size.y, size.z), yaw, OBJECT_WALL);
+
+    // Telhado, no mesmo espírito de DrawCampusBuilding.
+    DrawCampusBox(
+        glm::vec3(center.x, center.y + size.y * 0.52f, center.z),
+        glm::vec3(size.x * 1.06f, 0.22f, size.z * 1.06f),
+        yaw,
+        OBJECT_METAL_ROOF
+    );
+
+    // Fachadas com vão de porta nas duas extremidades (topo +Z e base -Z).
+    auto draw_facade = [&](float z_end, float inward)
+    {
+        float z = z_end + inward * kFacadeDepth * 0.5f;
+
+        // Ombreiras dos dois lados do vão.
+        DrawCampusBox(glm::vec3(center.x - jamb_offset, center.y, z), glm::vec3(jamb_width, size.y, kFacadeDepth), yaw, OBJECT_WALL);
+        DrawCampusBox(glm::vec3(center.x + jamb_offset, center.y, z), glm::vec3(jamb_width, size.y, kFacadeDepth), yaw, OBJECT_WALL);
+
+        // Verga acima da porta (puramente visual; a colisão ignora Y).
+        float lintel_height = (center.y + size.y * 0.5f) - kDoorHeight;
+        float lintel_center_y = kDoorHeight + lintel_height * 0.5f;
+        DrawCampusBox(glm::vec3(center.x, lintel_center_y, z), glm::vec3(kDoorWidth, lintel_height, kFacadeDepth), yaw, OBJECT_WALL);
+    };
+
+    draw_facade(center.z + size.z * 0.5f, -1.0f); // fachada do topo, recuada para dentro
+    draw_facade(center.z - size.z * 0.5f, +1.0f); // fachada da base, recuada para dentro
+
+    // Janelas decorativas na face externa de cada parede lateral.
+    DrawCampusBox(
+        glm::vec3(center.x - size.x * 0.51f, center.y + size.y * 0.22f, center.z),
+        glm::vec3(0.08f, 0.38f, size.z * 0.78f),
+        yaw,
+        OBJECT_WINDOW
+    );
+    DrawCampusBox(
+        glm::vec3(center.x + size.x * 0.51f, center.y + size.y * 0.22f, center.z),
+        glm::vec3(0.08f, 0.38f, size.z * 0.78f),
+        yaw,
+        OBJECT_WINDOW
+    );
+}
+
 void DrawCampusTree(glm::vec3 position, float scale)
 {
     DrawCampusBox(
@@ -2075,9 +2143,15 @@ void DrawCampusMap()
     DrawCampusBuilding(glm::vec3(12.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
 
     // Right-side service row and front/admin blocks.
-    DrawCampusBuilding(glm::vec3(32.0f, 3.00f, -20.0f), glm::vec3(8.0f, 6.0f, 22.0f), 0.0f);
-    DrawCampusBuilding(glm::vec3(32.0f, 3.00f, -48.0f), glm::vec3(8.0f, 6.0f, 16.0f), 0.0f);
-    DrawCampusBuilding(glm::vec3(32.0f, 3.00f, -72.0f), glm::vec3(8.0f, 6.0f, 16.0f), 0.0f);
+    // Os 3 prédios compridos da direita são ocos, com corredor caminhável ao longo de Z.
+    DrawCampusCorridorBuilding(glm::vec3(32.0f, 3.00f, -20.0f), glm::vec3(8.0f, 6.0f, 22.0f), 0.0f);
+    DrawCampusCorridorBuilding(glm::vec3(32.0f, 3.00f, -48.0f), glm::vec3(8.0f, 6.0f, 16.0f), 0.0f);
+    DrawCampusCorridorBuilding(glm::vec3(32.0f, 3.00f, -72.0f), glm::vec3(8.0f, 6.0f, 16.0f), 0.0f);
+
+    // Piso interno (rocha) do corredor de cada um dos 3 prédios.
+    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -20.0f), glm::vec3(5.0f, 1.0f, 22.0f), 0.0f, OBJECT_ROCKY_FLOOR);
+    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -48.0f), glm::vec3(5.0f, 1.0f, 16.0f), 0.0f, OBJECT_ROCKY_FLOOR);
+    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -72.0f), glm::vec3(5.0f, 1.0f, 16.0f), 0.0f, OBJECT_ROCKY_FLOOR);
     DrawCampusBuilding(glm::vec3(-14.0f, 3.20f, -96.0f), glm::vec3(16.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(3.0f, 3.20f, -97.0f), glm::vec3(12.0f, 6.4f, 9.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(-12.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f), 0.0f);
@@ -2106,9 +2180,16 @@ void DrawCampusMap()
     for (int i = 0; i < 12; i += 2)
     {
         DrawCampusTree(glm::vec3(-18.0f + i * 3.8f, 0.0f, -27.5f), 0.90f);
-        DrawCampusTree(glm::vec3(5.0f + i * 3.3f, 0.0f, -27.5f), 0.82f);
         DrawCampusTree(glm::vec3(-18.0f + i * 3.8f, 0.0f, -69.5f), 0.90f);
-        DrawCampusTree(glm::vec3(5.0f + i * 3.3f, 0.0f, -69.5f), 0.82f);
+
+        // Pula as árvores da fileira da direita que cairiam dentro dos
+        // prédios-corredor (footprint x:[28,36]).
+        float xr = 5.0f + i * 3.3f;
+        if (xr < 27.0f || xr > 37.0f)
+        {
+            DrawCampusTree(glm::vec3(xr, 0.0f, -27.5f), 0.82f);
+            DrawCampusTree(glm::vec3(xr, 0.0f, -69.5f), 0.82f);
+        }
     }
 
     // Outer forest: trees after the campus blocks, before the enclosing walls.
@@ -2298,35 +2379,42 @@ void UpdateLightingUniforms(glm::vec3 viewer_position)
     glUniform1fv(g_light_intensity_uniform, MAX_LIGHTS_CPU, light_intensity);
     glUniform1fv(g_light_range_uniform, MAX_LIGHTS_CPU, light_range);
 
-    // Oclusores: filtra muros externos enormes (que prejudicariam o teste
-    // de sombra perto da câmera) e ranqueia por proximidade.
-    std::vector<IndexedDist> ranked_occ;
-    ranked_occ.reserve(obstacles.size());
+    // Oclusores: obstáculos do cenário + oclusores exclusivos de iluminação
+    // (tetos dos prédios-corredor). Filtra muros externos enormes (que
+    // prejudicariam o teste de sombra perto da câmera) e ranqueia por proximidade.
+    const std::vector<BoxObstacle>& light_occluders = GetSceneLightOccluders();
 
-    for (int i = 0; i < (int)obstacles.size(); ++i)
+    struct RankedOcc { float d2; const BoxObstacle* box; };
+    std::vector<RankedOcc> ranked_occ;
+    ranked_occ.reserve(obstacles.size() + light_occluders.size());
+
+    auto consider_occluder = [&](const BoxObstacle& o)
     {
-        const BoxObstacle& o = obstacles[i];
-
         // Pular muros externos do mapa: dimensão > 100 em algum eixo horizontal.
         if (o.size.x > 100.0f || o.size.z > 100.0f)
-            continue;
+            return;
 
         glm::vec3 diff = o.center - viewer_position;
-        ranked_occ.push_back({ diff.x*diff.x + diff.z*diff.z, i });
-    }
+        ranked_occ.push_back({ diff.x*diff.x + diff.z*diff.z, &o });
+    };
+
+    for (const BoxObstacle& o : obstacles)
+        consider_occluder(o);
+    for (const BoxObstacle& o : light_occluders)
+        consider_occluder(o);
 
     int occ_count = std::min((int)ranked_occ.size(), MAX_OCCLUDERS_CPU);
     std::partial_sort(ranked_occ.begin(),
                       ranked_occ.begin() + occ_count,
                       ranked_occ.end(),
-                      [](const IndexedDist& a, const IndexedDist& b){ return a.d2 < b.d2; });
+                      [](const RankedOcc& a, const RankedOcc& b){ return a.d2 < b.d2; });
 
     float occ_min[MAX_OCCLUDERS_CPU * 3] = {0};
     float occ_max[MAX_OCCLUDERS_CPU * 3] = {0};
 
     for (int k = 0; k < occ_count; ++k)
     {
-        const BoxObstacle& o = obstacles[ranked_occ[k].idx];
+        const BoxObstacle& o = *ranked_occ[k].box;
         glm::vec3 half = o.size * 0.5f;
         glm::vec3 lo = o.center - half;
         glm::vec3 hi = o.center + half;
@@ -2484,6 +2572,7 @@ int main(int argc, char* argv[])
 LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImage0
    LoadTextureImage("../../data/textures/textura_grama.png");         // TextureImage1
    LoadTextureImage("../../data/textures/monster-zero-ultra/MonsterUltra_em.png"); // TextureImage2
+   LoadTextureImage("../../data/textures/rocky_terrain_02_diff_1k.jpg"); // TextureImage3
     
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
@@ -3487,6 +3576,7 @@ void LoadShadersFromFiles()
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage0"), 0);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage1"), 1);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage2"), 2);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage3"), 3);
     glUseProgram(0);
 }
 

@@ -15,9 +15,30 @@ const std::vector<BoxObstacle>& GetSceneObstacles()
         { glm::vec3(12.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
 
         // Predios laterais e blocos de entrada.
-        { glm::vec3(32.0f, 3.00f, -20.0f), glm::vec3(8.0f, 6.0f, 22.0f) },
-        { glm::vec3(32.0f, 3.00f, -48.0f), glm::vec3(8.0f, 6.0f, 16.0f) },
-        { glm::vec3(32.0f, 3.00f, -72.0f), glm::vec3(8.0f, 6.0f, 16.0f) },
+        // Os 3 predios compridos da direita sao ocos: corredor caminhavel ao longo de Z.
+        // Cada um vira 2 paredes laterais + 4 ombreiras de porta (topo e base), deixando
+        // o miolo (x:[29.5,34.5]) e o vao central (x:[30.75,33.25]) livres.
+        // Predio A (z -9..-31)
+        { glm::vec3(28.75f, 3.0f, -20.0f),  glm::vec3(1.5f,  6.0f, 22.0f) },
+        { glm::vec3(35.25f, 3.0f, -20.0f),  glm::vec3(1.5f,  6.0f, 22.0f) },
+        { glm::vec3(30.125f, 3.0f, -9.5f),  glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -9.5f),  glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(30.125f, 3.0f, -30.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -30.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        // Predio B (z -40..-56)
+        { glm::vec3(28.75f, 3.0f, -48.0f),  glm::vec3(1.5f,  6.0f, 16.0f) },
+        { glm::vec3(35.25f, 3.0f, -48.0f),  glm::vec3(1.5f,  6.0f, 16.0f) },
+        { glm::vec3(30.125f, 3.0f, -40.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -40.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(30.125f, 3.0f, -55.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -55.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        // Predio C (z -64..-80)
+        { glm::vec3(28.75f, 3.0f, -72.0f),  glm::vec3(1.5f,  6.0f, 16.0f) },
+        { glm::vec3(35.25f, 3.0f, -72.0f),  glm::vec3(1.5f,  6.0f, 16.0f) },
+        { glm::vec3(30.125f, 3.0f, -64.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -64.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(30.125f, 3.0f, -79.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -79.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
         { glm::vec3(-14.0f, 3.20f, -96.0f), glm::vec3(16.0f, 6.4f, 12.0f) },
         { glm::vec3(3.0f, 3.20f, -97.0f), glm::vec3(12.0f, 6.4f, 9.0f) },
         { glm::vec3(-12.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f) },
@@ -129,9 +150,16 @@ const std::vector<BoxObstacle>& GetSceneObstacles()
         for (int i = 0; i < 12; i += 2)
         {
             add_tree_collision(glm::vec3(-18.0f + i * 3.8f, 0.0f, -27.5f), 0.90f);
-            add_tree_collision(glm::vec3(5.0f + i * 3.3f, 0.0f, -27.5f), 0.82f);
             add_tree_collision(glm::vec3(-18.0f + i * 3.8f, 0.0f, -69.5f), 0.90f);
-            add_tree_collision(glm::vec3(5.0f + i * 3.3f, 0.0f, -69.5f), 0.82f);
+
+            // Pula as árvores da fileira da direita que cairiam dentro dos
+            // prédios-corredor (footprint x:[28,36]).
+            float xr = 5.0f + i * 3.3f;
+            if (xr < 27.0f || xr > 37.0f)
+            {
+                add_tree_collision(glm::vec3(xr, 0.0f, -27.5f), 0.82f);
+                add_tree_collision(glm::vec3(xr, 0.0f, -69.5f), 0.82f);
+            }
         }
 
         for (int i = 0; i < 31; ++i)
@@ -178,6 +206,21 @@ const std::vector<BoxObstacle>& GetSceneObstacles()
     }
 
     return obstacles;
+}
+
+const std::vector<BoxObstacle>& GetSceneLightOccluders()
+{
+    // Tetos dos 3 prédios-corredor da direita. Cobrem todo o footprint
+    // (x:[28,36]) no topo das paredes, bloqueando a luz da rua/sol que
+    // entraria por cima do corredor. Não entram em GetSceneObstacles() para
+    // não fechar a passagem (a colisão ignora Y e bloquearia o miolo).
+    static const std::vector<BoxObstacle> light_occluders = {
+        { glm::vec3(32.0f, 6.1f, -20.0f), glm::vec3(8.0f, 0.4f, 22.0f) },
+        { glm::vec3(32.0f, 6.1f, -48.0f), glm::vec3(8.0f, 0.4f, 16.0f) },
+        { glm::vec3(32.0f, 6.1f, -72.0f), glm::vec3(8.0f, 0.4f, 16.0f) }
+    };
+
+    return light_occluders;
 }
 
 std::vector<Collectible>& GetSceneCollectibles()
