@@ -2,6 +2,7 @@
 #define SCENE_H
 
 #include <vector>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 // Representa um bloco retangular do cenário.
@@ -40,8 +41,25 @@ struct LightPost
     float range;           // distância máxima de iluminação
 };
 
+// Descreve um prédio-corredor oco (os 3 da fileira direita), para que a IA do
+// modo espectador saiba como entrar/sair sem ficar travada nas paredes.
+// O corredor é caminhável ao longo de Z, com uma porta em cada extremidade.
+// Coordenadas em XZ (o eixo Y é ignorado pela navegação).
+struct BuildingPortal
+{
+    glm::vec3 interior_min;   // canto do AABB do miolo caminhável (XZ)
+    glm::vec3 interior_max;   // canto oposto do AABB do miolo caminhável (XZ)
+    glm::vec2 door_center[2]; // centro de cada vão de porta (x do corredor, z da ponta)
+    glm::vec2 approach[2];    // ponto logo FORA de cada porta (lado da rua)
+    glm::vec2 inside[2];      // ponto logo DENTRO de cada porta (lado do corredor)
+};
+
 // Retorna a lista de blocos retangulares do cenário.
 const std::vector<BoxObstacle>& GetSceneObstacles();
+
+// Retorna os prédios-corredor ocos com suas portas, usados pela navegação do
+// modo espectador para rotear a entrada e a saída pelos vãos.
+const std::vector<BuildingPortal>& GetSceneBuildingPortals();
 
 // Oclusores usados APENAS para o teste de sombra da iluminação (não geram
 // colisão). Ex.: os tetos dos prédios-corredor, que precisam bloquear a luz

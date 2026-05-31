@@ -389,6 +389,11 @@ glm::vec3 g_SpectatorDetourDirection = glm::vec3(0.0f, 0.0f, 0.0f);
 bool g_SpectatorHasLastPosition = false;
 float g_SpectatorStuckTimer = 0.0f;
 float g_SpectatorDetourTimer = 0.0f;
+// Trânsito atual por uma porta de prédio-corredor (roteamento de entrada/saída).
+// Mode: 0 = nenhum, 1 = entrando, 2 = saindo. Portal/Door indexam GetSceneBuildingPortals().
+int g_SpectatorTransitMode = 0;
+int g_SpectatorTransitPortal = -1;
+int g_SpectatorTransitDoor = -1;
 float g_ShotgunRecoilTimer = 0.0f;
 float g_PlayerFallTimer = 0.0f;
 bool g_PlayerFallAnimationStarted = false;
@@ -773,6 +778,9 @@ void ResetGame(bool start_playing)
     g_SpectatorHasLastPosition = false;
     g_SpectatorStuckTimer = 0.0f;
     g_SpectatorDetourTimer = 0.0f;
+    g_SpectatorTransitMode = 0;
+    g_SpectatorTransitPortal = -1;
+    g_SpectatorTransitDoor = -1;
     g_PlayerFallTimer = 0.0f;
     g_PlayerFallAnimationStarted = false;
     g_CameraBobTimer = 0.0f;
@@ -1091,6 +1099,143 @@ static glm::vec3 SpectatorObjectiveTarget(glm::vec3 player_position)
     return GetSafeZone().center;
 }
 
+// Índice do prédio-corredor cujo miolo caminhável contém o ponto p (XZ), ou -1.
+static int SpectatorPortalContaining(glm::vec3 p)
+{
+    const std::vector<BuildingPortal>& portals = GetSceneBuildingPortals();
+
+    for (size_t i = 0; i < portals.size(); ++i)
+    {
+        const BuildingPortal& bp = portals[i];
+
+        if (p.x >= bp.interior_min.x && p.x <= bp.interior_max.x &&
+            p.z >= bp.interior_min.z && p.z <= bp.interior_max.z)
+        {
+            return (int)i;
+        }
+    }
+
+    return -1;
+}
+
+static float SpectatorDistXZ(glm::vec3 a, glm::vec2 b)
+{
+    float dx = a.x - b.x;
+    float dz = a.z - b.y;
+    return sqrt(dx*dx + dz*dz);
+}
+
+// Escolhe a porta (0/1) de menor custo total para o trânsito desejado.
+// enter == true: minimiza chegar à porta + alcançar o objetivo por dentro.
+// enter == false: minimiza alcançar a porta por dentro + sair em direção ao objetivo.
+static int SpectatorChooseDoor(const BuildingPortal& bp, glm::vec3 player, glm::vec3 objective, bool enter)
+{
+    int best = 0;
+    float best_cost = 1e9f;
+
+    for (int d = 0; d < 2; ++d)
+    {
+        float cost = enter
+            ? SpectatorDistXZ(player, bp.approach[d]) + SpectatorDistXZ(objective, bp.inside[d])
+            : SpectatorDistXZ(player, bp.inside[d])  + SpectatorDistXZ(objective, bp.approach[d]);
+
+        if (cost < best_cost)
+        {
+            best_cost = cost;
+            best = d;
+        }
+    }
+
+    return best;
+}
+
+// Decide o alvo imediato da navegação: o próprio objetivo, ou um waypoint de
+// porta quando é preciso entrar/sair de um prédio-corredor. Quando estamos
+// atravessando o vão estreito, out_threading vira true para o steering ir reto.
+static glm::vec3 SpectatorNavTarget(glm::vec3 player, glm::vec3 objective, bool* out_threading)
+{
+    *out_threading = false;
+
+    const std::vector<BuildingPortal>& portals = GetSceneBuildingPortals();
+    int obj_portal    = SpectatorPortalContaining(objective);
+    int player_portal = SpectatorPortalContaining(player);
+
+    if (obj_portal >= 0 && player_portal != obj_portal)
+    {
+        // Precisa ENTRAR no prédio do objetivo.
+        if (g_SpectatorTransitMode != 1 || g_SpectatorTransitPortal != obj_portal)
+        {
+            g_SpectatorTransitMode = 1;
+            g_SpectatorTransitPortal = obj_portal;
+            g_SpectatorTransitDoor = SpectatorChooseDoor(portals[obj_portal], player, objective, true);
+        }
+    }
+    else if (player_portal >= 0 && obj_portal != player_portal)
+    {
+        // Precisa SAIR do prédio onde está.
+        if (g_SpectatorTransitMode != 2 || g_SpectatorTransitPortal != player_portal)
+        {
+            g_SpectatorTransitMode = 2;
+            g_SpectatorTransitPortal = player_portal;
+            g_SpectatorTransitDoor = SpectatorChooseDoor(portals[player_portal], player, objective, false);
+        }
+    }
+    else
+    {
+        // Mesmo prédio ou ambos na rua: vai direto ao objetivo.
+        g_SpectatorTransitMode = 0;
+        g_SpectatorTransitPortal = -1;
+        g_SpectatorTransitDoor = -1;
+        return objective;
+    }
+
+    const BuildingPortal& bp = portals[g_SpectatorTransitPortal];
+    int d = g_SpectatorTransitDoor;
+
+    glm::vec3 approach = glm::vec3(bp.approach[d].x, player.y, bp.approach[d].y);
+    glm::vec3 inside   = glm::vec3(bp.inside[d].x,   player.y, bp.inside[d].y);
+    glm::vec3 door     = glm::vec3(bp.door_center[d].x, player.y, bp.door_center[d].y);
+
+    bool aligned = fabs(player.x - door.x) < 1.1f;
+    float zmin = fmin(approach.z, inside.z) - 0.4f;
+    float zmax = fmax(approach.z, inside.z) + 0.4f;
+    bool in_throat = aligned && player.z > zmin && player.z < zmax;
+    bool inside_building = SpectatorPortalContaining(player) == g_SpectatorTransitPortal;
+
+    if (g_SpectatorTransitMode == 1)
+    {
+        // Entrando: contorna até o approach pela rua; quando alinhado no vão,
+        // atravessa reto rumo ao ponto interno; ao entrar, segue ao objetivo.
+        if (inside_building)
+        {
+            g_SpectatorTransitMode = 0;
+            g_SpectatorTransitPortal = -1;
+            g_SpectatorTransitDoor = -1;
+            return objective;
+        }
+
+        if (in_throat)
+        {
+            *out_threading = true;
+            return inside;
+        }
+
+        return approach;
+    }
+
+    // Saindo: empurra reto pelo vão rumo ao approach até estar de fato na rua.
+    if (!inside_building && !in_throat)
+    {
+        g_SpectatorTransitMode = 0;
+        g_SpectatorTransitPortal = -1;
+        g_SpectatorTransitDoor = -1;
+        return objective;
+    }
+
+    *out_threading = true;
+    return approach;
+}
+
 void UpdateSpectatorController(float delta_t)
 {
     g_SpectatorWantsShoot = false;
@@ -1103,14 +1248,23 @@ void UpdateSpectatorController(float delta_t)
     glm::vec4 camera_position = g_Camera.GetPosition();
     glm::vec3 player_position = glm::vec3(camera_position.x, camera_position.y, camera_position.z);
     glm::vec3 objective = SpectatorObjectiveTarget(player_position);
-    glm::vec3 desired_move = objective - player_position;
+
+    // Roteia entrada/saída dos prédios-corredor por waypoints de porta. O alvo
+    // imediato (nav_target) pode ser uma porta; threading indica que estamos no
+    // vão estreito e devemos ir reto, sem desvios.
+    bool threading = false;
+    glm::vec3 nav_target = SpectatorNavTarget(player_position, objective, &threading);
+
+    glm::vec3 desired_move = nav_target - player_position;
     desired_move.y = 0.0f;
 
     glm::vec3 bigfoot_position;
     float bigfoot_distance = 0.0f;
     bool has_bigfoot = SpectatorNearestLiveBigfoot(player_position, &bigfoot_position, &bigfoot_distance);
 
-    if (has_bigfoot && bigfoot_distance < 10.0f)
+    // Atravessando um vão de porta, ignoramos a evasão do Pé Grande: desviar no
+    // meio da porta jogaria a IA contra as ombreiras.
+    if (!threading && has_bigfoot && bigfoot_distance < 10.0f)
     {
         glm::vec3 away = NormalizeXZ(player_position - bigfoot_position);
         desired_move = NormalizeXZ(desired_move) * 0.75f + away * 1.20f;
@@ -1141,24 +1295,44 @@ void UpdateSpectatorController(float delta_t)
     if (g_SpectatorDetourTimer > 0.0f)
         g_SpectatorDetourTimer -= delta_t;
 
-    bool path_blocked_soon = SpectatorDirectionBlocked(player_position, direct_move, 2.8f);
-
-    if ((g_SpectatorStuckTimer > 0.35f || path_blocked_soon) &&
-        g_SpectatorDetourTimer <= 0.0f)
+    if (threading)
     {
-        g_SpectatorDetourDirection = SpectatorChooseClearDirection(player_position, direct_move);
-        g_SpectatorDetourTimer = g_SpectatorStuckTimer > 0.35f ? 1.35f : 0.75f;
-    }
-
-    if (g_SpectatorDetourTimer > 0.0f &&
-        (g_SpectatorDetourDirection.x != 0.0f || g_SpectatorDetourDirection.z != 0.0f) &&
-        !SpectatorDirectionBlocked(player_position, g_SpectatorDetourDirection, 1.7f))
-    {
-        g_SpectatorMovementDirection = g_SpectatorDetourDirection;
+        // Dentro do vão: vai reto até o waypoint, sem leque nem desvio (que só
+        // empurrariam contra as ombreiras da porta).
+        g_SpectatorMovementDirection = direct_move;
+        g_SpectatorDetourTimer = 0.0f;
+        g_SpectatorStuckTimer = 0.0f;
     }
     else
     {
-        g_SpectatorMovementDirection = SpectatorChooseClearDirection(player_position, direct_move);
+        // Se ficou preso tentando alcançar a porta, troca para a outra porta do
+        // mesmo prédio (o caminho até esta pode estar bloqueado por carro/árvore).
+        if (g_SpectatorTransitMode != 0 && g_SpectatorStuckTimer > 1.2f)
+        {
+            g_SpectatorTransitDoor = 1 - g_SpectatorTransitDoor;
+            g_SpectatorStuckTimer = 0.0f;
+            g_SpectatorDetourTimer = 0.0f;
+        }
+
+        bool path_blocked_soon = SpectatorDirectionBlocked(player_position, direct_move, 2.8f);
+
+        if ((g_SpectatorStuckTimer > 0.35f || path_blocked_soon) &&
+            g_SpectatorDetourTimer <= 0.0f)
+        {
+            g_SpectatorDetourDirection = SpectatorChooseClearDirection(player_position, direct_move);
+            g_SpectatorDetourTimer = g_SpectatorStuckTimer > 0.35f ? 1.35f : 0.75f;
+        }
+
+        if (g_SpectatorDetourTimer > 0.0f &&
+            (g_SpectatorDetourDirection.x != 0.0f || g_SpectatorDetourDirection.z != 0.0f) &&
+            !SpectatorDirectionBlocked(player_position, g_SpectatorDetourDirection, 1.7f))
+        {
+            g_SpectatorMovementDirection = g_SpectatorDetourDirection;
+        }
+        else
+        {
+            g_SpectatorMovementDirection = SpectatorChooseClearDirection(player_position, direct_move);
+        }
     }
 
     float objective_dx = objective.x - player_position.x;
@@ -2663,6 +2837,9 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
                 g_SpectatorHasLastPosition = false;
                 g_SpectatorStuckTimer = 0.0f;
                 g_SpectatorDetourTimer = 0.0f;
+                g_SpectatorTransitMode = 0;
+                g_SpectatorTransitPortal = -1;
+                g_SpectatorTransitDoor = -1;
                 g_SpectatorAutoAdvanceTimer = -1.0f;
                 g_SpectatorAutoRetryTimer = -1.0f;
             }
@@ -2687,6 +2864,9 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
                 g_SpectatorHasLastPosition = false;
                 g_SpectatorStuckTimer = 0.0f;
                 g_SpectatorDetourTimer = 0.0f;
+                g_SpectatorTransitMode = 0;
+                g_SpectatorTransitPortal = -1;
+                g_SpectatorTransitDoor = -1;
                 g_SpectatorAutoAdvanceTimer = -1.0f;
                 g_SpectatorAutoRetryTimer = -1.0f;
             }
@@ -4395,6 +4575,9 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
             g_SpectatorHasLastPosition = false;
             g_SpectatorStuckTimer = 0.0f;
             g_SpectatorDetourTimer = 0.0f;
+            g_SpectatorTransitMode = 0;
+            g_SpectatorTransitPortal = -1;
+            g_SpectatorTransitDoor = -1;
             g_SpectatorAutoAdvanceTimer = -1.0f;
             g_SpectatorAutoRetryTimer = -1.0f;
             fprintf(stdout, "Modo Spectator IA: %s\n", g_SpectatorMode ? "ON" : "OFF");

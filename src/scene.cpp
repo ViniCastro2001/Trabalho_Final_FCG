@@ -208,6 +208,39 @@ const std::vector<BoxObstacle>& GetSceneObstacles()
     return obstacles;
 }
 
+const std::vector<BuildingPortal>& GetSceneBuildingPortals()
+{
+    // Os 3 prédios-corredor da direita. Centro do corredor em x = 32.0, miolo
+    // caminhável x:[29.5, 34.5], vão de porta x:[30.75, 33.25]. As portas ficam
+    // nas duas extremidades de Z (mesmos z das ombreiras em GetSceneObstacles()).
+    // approach = ~2.5 m FORA da porta (na rua); inside = ~2.5 m DENTRO do corredor.
+    static const std::vector<BuildingPortal> portals = {
+        // Prédio A (z -9.5 .. -30.5)
+        {
+            glm::vec3(29.5f, 0.0f, -30.5f), glm::vec3(34.5f, 0.0f, -9.5f),
+            { glm::vec2(32.0f, -9.5f),  glm::vec2(32.0f, -30.5f) },
+            { glm::vec2(32.0f, -7.0f),  glm::vec2(32.0f, -33.0f) },
+            { glm::vec2(32.0f, -12.0f), glm::vec2(32.0f, -28.0f) }
+        },
+        // Prédio B (z -40.5 .. -55.5)
+        {
+            glm::vec3(29.5f, 0.0f, -55.5f), glm::vec3(34.5f, 0.0f, -40.5f),
+            { glm::vec2(32.0f, -40.5f), glm::vec2(32.0f, -55.5f) },
+            { glm::vec2(32.0f, -38.0f), glm::vec2(32.0f, -58.0f) },
+            { glm::vec2(32.0f, -43.0f), glm::vec2(32.0f, -53.0f) }
+        },
+        // Prédio C (z -64.5 .. -79.5)
+        {
+            glm::vec3(29.5f, 0.0f, -79.5f), glm::vec3(34.5f, 0.0f, -64.5f),
+            { glm::vec2(32.0f, -64.5f), glm::vec2(32.0f, -79.5f) },
+            { glm::vec2(32.0f, -62.0f), glm::vec2(32.0f, -82.0f) },
+            { glm::vec2(32.0f, -67.0f), glm::vec2(32.0f, -77.0f) }
+        }
+    };
+
+    return portals;
+}
+
 const std::vector<BoxObstacle>& GetSceneLightOccluders()
 {
     // Tetos dos 3 prédios-corredor da direita. Cobrem todo o footprint
