@@ -51,6 +51,8 @@ uniform mat4 projection;
 #define ROCKY_FLOOR 28
 // Modelo .obj de carro: cor vem direto do material (.mtl), via u_material_diffuse.
 #define CAR 29
+// Modelo .obj de banco de madeira (wooden-bench).
+#define BENCH 30
 
 uniform int object_id;
 
@@ -248,7 +250,15 @@ void main()
     }
     else if ( object_id == ROAD )
     {
-        float lane = step(0.965, fract(position_world.x * 0.22));
+        // A faixa da pista deve correr ao longo do comprimento da rua. Para isso
+        // medimos a posicao ao longo do eixo da LARGURA (o eixo local mais curto
+        // do quad), obtido das colunas da matriz model. Assim a faixa acompanha a
+        // orientacao da rua (vertical ou horizontal) automaticamente.
+        vec3 x_axis = (model * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
+        vec3 z_axis = (model * vec4(0.0, 0.0, 1.0, 0.0)).xyz;
+        vec3 width_axis = (length(x_axis) <= length(z_axis)) ? normalize(x_axis) : normalize(z_axis);
+        float across = dot(position_world.xyz, width_axis);
+        float lane = step(0.965, fract(across * 0.22));
         Kd0 = mix(vec3(0.095, 0.095, 0.090), vec3(0.70, 0.68, 0.58), lane * 0.40);
     }
     else if ( object_id == SIDEWALK )
@@ -295,6 +305,11 @@ void main()
     {
         // Cada peça do carro usa a cor do seu material no arquivo .mtl.
         Kd0 = u_material_diffuse;
+    }
+    else if ( object_id == BENCH )
+    {
+        // Banco de madeira: cor de madeira solida.
+        Kd0 = vec3(0.40, 0.26, 0.13);
     }
     else if ( object_id == MONSTER_DRINK )
     {

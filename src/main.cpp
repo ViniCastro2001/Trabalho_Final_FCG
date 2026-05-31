@@ -145,6 +145,8 @@ void DrawCampusCorridorBuilding(glm::vec3 center, glm::vec3 size, float yaw);
 void DrawCampusTree(glm::vec3 position, float scale);
 void DrawCampusPine(glm::vec3 position, float scale);
 void DrawCampusCar(glm::vec3 position, float yaw, glm::vec3 body_color);
+void DrawCampusBench(glm::vec3 position, float yaw);
+void DrawCampusBenchPair(glm::vec3 center, float yaw);
 void DrawCampusMap();
 void DrawSafeZoneBeacon(const SafeZone& safe_zone, float time_seconds);
 void DrawLightPost(const LightPost& post);
@@ -369,6 +371,7 @@ const int OBJECT_WEAPON_WOOD = 26;
 const int OBJECT_WEAPON_ACCENT = 27;
 const int OBJECT_ROCKY_FLOOR = 28;
 const int OBJECT_CAR = 29; // Modelo .obj de carro (multi-material via u_material_diffuse).
+const int OBJECT_BENCH = 30; // Modelo .obj de banco de madeira (wooden-bench).
 
 bool g_PlayerInvisibleToBigfoot = false;
 #if BIGFOOT_FREEZE_DEBUG_ENABLED
@@ -2283,6 +2286,34 @@ void DrawCampusCar(glm::vec3 position, float yaw, glm::vec3 body_color)
     }
 }
 
+void DrawCampusBench(glm::vec3 position, float yaw)
+{
+    // Modelo "Box008" (wooden-bench) nasce em Z-up (3ds Max): comprimento ~2.94
+    // em X, altura ~1.46 em Z. Rotacionamos -90deg em X para virar Y-up e
+    // escalamos para ~1.8 m de comprimento; a base ja fica apoiada no chao (Y>=0).
+    if (g_VirtualScene.find("Box008") == g_VirtualScene.end())
+        return; // Modelo do banco nao foi carregado.
+
+    const float bench_scale = 0.60f;
+    glm::mat4 model = Matrix_Translate(position.x, position.y, position.z)
+        * Matrix_Rotate_Y(yaw)
+        * Matrix_Rotate_X(-1.57079633f)
+        * Matrix_Scale(bench_scale, bench_scale, bench_scale);
+
+    glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+    glUniform1i(g_object_id_uniform, OBJECT_BENCH);
+    DrawVirtualObject("Box008");
+}
+
+void DrawCampusBenchPair(glm::vec3 center, float yaw)
+{
+    // Dois bancos lado a lado ao longo do comprimento (eixo X local apos o yaw),
+    // formando um conjunto de ~3.6 m. O offset segue a direcao do comprimento.
+    glm::vec3 along = glm::vec3(cosf(yaw), 0.0f, -sinf(yaw)) * 0.90f;
+    DrawCampusBench(center - along, yaw);
+    DrawCampusBench(center + along, yaw);
+}
+
 void DrawCampusMap()
 {
     auto draw_spawn_safe_pine = [](glm::vec3 position, float scale)
@@ -2298,32 +2329,76 @@ void DrawCampusMap()
 
     DrawCampusSurface(glm::vec3(0.0f, -0.03f, -53.0f), glm::vec3(164.0f, 1.0f, 214.0f), 0.0f, OBJECT_PLANE);
 
-    // Roads and paved circulation, based on the top-view campus plan.
-    DrawCampusSurface(glm::vec3(-31.0f, 0.01f, -45.0f), glm::vec3(6.0f, 1.0f, 118.0f), 0.0f, OBJECT_ROAD);
-    DrawCampusSurface(glm::vec3(0.0f, 0.01f, -48.0f), glm::vec3(5.6f, 1.0f, 104.0f), 0.0f, OBJECT_ROAD);
-    DrawCampusSurface(glm::vec3(25.0f, 0.01f, -49.0f), glm::vec3(4.6f, 1.0f, 102.0f), 0.0f, OBJECT_ROAD);
-    DrawCampusSurface(glm::vec3(-2.5f, 0.012f, -8.0f), glm::vec3(52.0f, 1.0f, 4.6f), 0.0f, OBJECT_ROAD);
-    DrawCampusSurface(glm::vec3(-2.5f, 0.012f, -92.0f), glm::vec3(52.0f, 1.0f, 4.6f), 0.0f, OBJECT_ROAD);
-    DrawCampusSurface(glm::vec3(-11.0f, 0.012f, -29.0f), glm::vec3(29.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(12.5f, 0.012f, -29.0f), glm::vec3(21.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(-11.0f, 0.012f, -50.0f), glm::vec3(29.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(12.5f, 0.012f, -50.0f), glm::vec3(21.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(-11.0f, 0.012f, -71.0f), glm::vec3(29.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(12.5f, 0.012f, -71.0f), glm::vec3(21.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
+    // Calcadas (OBJECT_SIDEWALK) aos pes dos edificios e nas bordas das ruas.
+    // Desenhadas ANTES das ruas e num Y menor (0.006 < 0.01) para o asfalto ficar
+    // por cima nas sobreposicoes; os predios (desenhados depois) cobrem o miolo,
+    // deixando visivel apenas a faixa de calcada ao redor de cada edificio.
+    const float kSidewalkY = 0.006f;
+    // Pe dos predios das fileiras principais (esquerda x=-12 e direita x=12).
+    for (int zi = 0; zi < 4; ++zi)
+    {
+        float bz = -18.0f - zi * 21.0f;
+        DrawCampusSurface(glm::vec3(-12.0f, kSidewalkY, bz), glm::vec3(19.6f, 1.0f, 14.6f), 0.0f, OBJECT_SIDEWALK);
+        DrawCampusSurface(glm::vec3( 12.0f, kSidewalkY, bz), glm::vec3(19.6f, 1.0f, 14.6f), 0.0f, OBJECT_SIDEWALK);
+    }
+    // Pe dos predios-corredor da direita.
+    DrawCampusSurface(glm::vec3(32.0f, kSidewalkY, -20.0f), glm::vec3(10.6f, 1.0f, 24.6f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(32.0f, kSidewalkY, -48.0f), glm::vec3(10.6f, 1.0f, 18.6f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(32.0f, kSidewalkY, -72.0f), glm::vec3(10.6f, 1.0f, 18.6f), 0.0f, OBJECT_SIDEWALK);
+    // Pe dos blocos do fundo e da frente.
+    DrawCampusSurface(glm::vec3(-14.0f, kSidewalkY, -96.0f), glm::vec3(18.6f, 1.0f, 14.6f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(  3.0f, kSidewalkY, -97.0f), glm::vec3(14.6f, 1.0f, 11.6f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(-12.0f, kSidewalkY,  -5.0f), glm::vec3(13.6f, 1.0f, 10.6f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3( 13.0f, kSidewalkY,  -5.0f), glm::vec3(13.6f, 1.0f, 10.6f), 0.0f, OBJECT_SIDEWALK);
+    // Estacionamentos (areas maiores onde ficam os carros).
+    DrawCampusSurface(glm::vec3(  0.0f, kSidewalkY,   5.0f), glm::vec3(46.0f, 1.0f,  9.0f), 0.0f, OBJECT_SIDEWALK); // praca/estac. frontal
+    DrawCampusSurface(glm::vec3(-24.0f, kSidewalkY, -22.5f), glm::vec3( 7.0f, 1.0f, 47.0f), 0.0f, OBJECT_SIDEWALK); // estac. lateral esq (vai ate a praca frontal)
+    // Praca ao redor da zona segura e do poste vermelho.
+    DrawCampusSurface(glm::vec3( 22.0f, kSidewalkY, -96.0f), glm::vec3(20.0f, 1.0f, 16.0f), 0.0f, OBJECT_SIDEWALK);
+    // Frestas estreitas entre predios muito proximos, preenchidas para nao
+    // sobrar linha fina de grama.
+    DrawCampusSurface(glm::vec3(-12.00f, kSidewalkY, -10.5f), glm::vec3(17.0f, 1.0f, 4.0f), 0.0f, OBJECT_SIDEWALK); // frente <-> fileira1 (esq)
+    DrawCampusSurface(glm::vec3( 12.00f, kSidewalkY, -10.5f), glm::vec3(17.0f, 1.0f, 4.0f), 0.0f, OBJECT_SIDEWALK); // frente <-> fileira1 (dir)
+    DrawCampusSurface(glm::vec3(-13.25f, kSidewalkY, -88.5f), glm::vec3(14.5f, 1.0f, 4.0f), 0.0f, OBJECT_SIDEWALK); // fileira4 <-> fundo (esq)
+    DrawCampusSurface(glm::vec3(  6.25f, kSidewalkY, -89.75f), glm::vec3(5.5f, 1.0f, 5.5f), 0.0f, OBJECT_SIDEWALK); // fileira4 <-> fundo (dir)
+    DrawCampusSurface(glm::vec3( -4.50f, kSidewalkY, -96.5f), glm::vec3(4.0f, 1.0f, 11.0f), 0.0f, OBJECT_SIDEWALK); // entre os dois blocos do fundo
+    // Conectores ao longo da avenida atravessando os patios (z=-27.5 e z=-69.5),
+    // ligando a calcada de uma fileira a outra para a rede ficar continua.
+    DrawCampusSurface(glm::vec3(-3.4f, kSidewalkY, -28.5f), glm::vec3(1.2f, 1.0f, 7.0f), 0.0f, OBJECT_SIDEWALK); // patio 1 (oeste)
+    DrawCampusSurface(glm::vec3( 3.4f, kSidewalkY, -28.5f), glm::vec3(1.2f, 1.0f, 7.0f), 0.0f, OBJECT_SIDEWALK); // patio 1 (leste)
+    DrawCampusSurface(glm::vec3(-3.4f, kSidewalkY, -70.5f), glm::vec3(1.2f, 1.0f, 7.0f), 0.0f, OBJECT_SIDEWALK); // patio 2 (oeste)
+    DrawCampusSurface(glm::vec3( 3.4f, kSidewalkY, -70.5f), glm::vec3(1.2f, 1.0f, 7.0f), 0.0f, OBJECT_SIDEWALK); // patio 2 (leste)
 
-    // Parking lots.
-    DrawCampusSurface(glm::vec3(-21.2f, 0.014f, -25.6f), glm::vec3(14.5f, 1.0f, 42.0f), 0.0f, OBJECT_CONCRETE);
-    DrawCampusSurface(glm::vec3(-3.8f, 0.014f, -2.0f), glm::vec3(38.0f, 1.0f, 12.0f), 0.0f, OBJECT_CONCRETE);
-    DrawCampusSurface(glm::vec3(22.0f, 0.014f, -88.0f), glm::vec3(34.0f, 1.0f, 10.0f), 0.0f, OBJECT_CONCRETE);
+    // Anel viario externo: duas faixas verticais nas laterais (x=-31 e x=25) e
+    // duas horizontais (topo z=14, base z=-108) ligando-as, fechando a "cidade"
+    // dentro de um perimetro de ruas. As duas verticais externas compartilham o
+    // mesmo alcance em Z (14 .. -108) para os cantos se encontrarem. A base foi
+    // afastada para z=-108 para dar espacamento aos predios do fundo.
+    //
+    // Prioridade nas intersecoes: as ruas VERTICAIS ficam num Y maior (0.012) e as
+    // HORIZONTAIS num Y menor (0.010). Assim, onde elas se cruzam, a vertical fica
+    // por cima (suas linhas tem prioridade) e nao ha z-fighting entre as texturas.
+    DrawCampusSurface(glm::vec3(-31.0f, 0.012f, -47.0f), glm::vec3(6.0f, 1.0f, 122.0f), 0.0f, OBJECT_ROAD); // vertical esq
+    DrawCampusSurface(glm::vec3(25.0f, 0.012f, -47.0f), glm::vec3(4.6f, 1.0f, 122.0f), 0.0f, OBJECT_ROAD);  // vertical dir
+    DrawCampusSurface(glm::vec3(-3.0f, 0.010f, 14.0f), glm::vec3(62.0f, 1.0f, 6.0f), 0.0f, OBJECT_ROAD);    // horizontal topo
+    DrawCampusSurface(glm::vec3(-3.0f, 0.010f, -108.0f), glm::vec3(62.0f, 1.0f, 6.0f), 0.0f, OBJECT_ROAD);  // horizontal base
+    // Avenida central interna (eixo Z, VERTICAL => Y maior): encosta no anel de
+    // topo (z=14) e termina em z=-90, antes do predio dos fundos (~z=-92.5).
+    DrawCampusSurface(glm::vec3(0.0f, 0.012f, -38.0f), glm::vec3(5.6f, 1.0f, 104.0f), 0.0f, OBJECT_ROAD);
+    // Rua transversal interna (HORIZONTAL => Y menor) ligando as duas verticais de
+    // ponta a ponta, centralizada no vao entre as fileiras z=-39 (face -45) e
+    // z=-60 (face -54), ou seja z=-49.5, deixando 1.5 m de folga para cada fileira.
+    DrawCampusSurface(glm::vec3(-3.0f, 0.010f, -49.5f), glm::vec3(62.0f, 1.0f, 6.0f), 0.0f, OBJECT_ROAD);
 
-    // Long classroom/warehouse rows.
-    DrawCampusBuilding(glm::vec3(-11.0f, 3.20f, -18.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
+    // Long classroom/warehouse rows. Fileira esquerda em x=-12 (simetrica a x=12
+    // do outro lado da avenida central, com a mesma folga ate o asfalto).
+    DrawCampusBuilding(glm::vec3(-12.0f, 3.20f, -18.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(12.0f, 3.20f, -18.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
-    DrawCampusBuilding(glm::vec3(-11.0f, 3.20f, -39.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
+    DrawCampusBuilding(glm::vec3(-12.0f, 3.20f, -39.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(12.0f, 3.20f, -39.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
-    DrawCampusBuilding(glm::vec3(-11.0f, 3.20f, -60.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
+    DrawCampusBuilding(glm::vec3(-12.0f, 3.20f, -60.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(12.0f, 3.20f, -60.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
-    DrawCampusBuilding(glm::vec3(-11.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
+    DrawCampusBuilding(glm::vec3(-12.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(12.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
 
     // Right-side service row and front/admin blocks.
@@ -2332,17 +2407,17 @@ void DrawCampusMap()
     DrawCampusCorridorBuilding(glm::vec3(32.0f, 3.00f, -48.0f), glm::vec3(8.0f, 6.0f, 16.0f), 0.0f);
     DrawCampusCorridorBuilding(glm::vec3(32.0f, 3.00f, -72.0f), glm::vec3(8.0f, 6.0f, 16.0f), 0.0f);
 
-    // Piso interno (rocha) do corredor de cada um dos 3 prédios.
-    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -20.0f), glm::vec3(5.0f, 1.0f, 22.0f), 0.0f, OBJECT_ROCKY_FLOOR);
-    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -48.0f), glm::vec3(5.0f, 1.0f, 16.0f), 0.0f, OBJECT_ROCKY_FLOOR);
-    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -72.0f), glm::vec3(5.0f, 1.0f, 16.0f), 0.0f, OBJECT_ROCKY_FLOOR);
+    // Piso interno do corredor de cada um dos 3 prédios exploraveis.
+    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -20.0f), glm::vec3(5.0f, 1.0f, 22.0f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -48.0f), glm::vec3(5.0f, 1.0f, 16.0f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -72.0f), glm::vec3(5.0f, 1.0f, 16.0f), 0.0f, OBJECT_SIDEWALK);
     DrawCampusBuilding(glm::vec3(-14.0f, 3.20f, -96.0f), glm::vec3(16.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(3.0f, 3.20f, -97.0f), glm::vec3(12.0f, 6.4f, 9.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(-12.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(13.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f), 0.0f);
 
-    // Parking cars.
-    // Paleta de cores de carroceria para variar os carros pelo campus.
+    // Carros estacionados espalhados pelas areas de concreto. As colisoes
+    // correspondentes estao em GetSceneObstacles() (scene.cpp).
     static const glm::vec3 kCarColors[5] = {
         glm::vec3(0.62f, 0.07f, 0.06f), // vermelho
         glm::vec3(0.09f, 0.18f, 0.50f), // azul
@@ -2350,19 +2425,39 @@ void DrawCampusMap()
         glm::vec3(0.05f, 0.05f, 0.06f), // preto
         glm::vec3(0.13f, 0.42f, 0.28f), // verde
     };
-
-    // Mantemos apenas a fileira externa (x=-25.6), dentro da faixa do estacionamento.
-    // A fileira interna (x=-16.8) caía sobre a área dos prédios, então foi removida.
+    const float kHalfPi = 1.57079633f;
+    // Estacionamento lateral esquerdo (perpendiculares, comprimento em X).
     for (int i = 0; i < 5; ++i)
+        DrawCampusCar(glm::vec3(-24.0f, 0.0f, -14.0f - i * 6.0f), kHalfPi, kCarColors[i % 5]);
+    // Praca/estacionamento frontal (voltados para o sul, comprimento em Z).
     {
-        DrawCampusCar(glm::vec3(-25.6f, 0.0f, -8.0f - i * 8.8f), 0.0f, kCarColors[i % 5]);
+        const float xs[6] = { -20.0f, -13.0f, -7.0f, 7.0f, 13.0f, 20.0f };
+        for (int i = 0; i < 6; ++i)
+            DrawCampusCar(glm::vec3(xs[i], 0.0f, 5.5f), 0.0f, kCarColors[i % 5]);
     }
+    // Praca da zona segura.
+    DrawCampusCar(glm::vec3(14.0f, 0.0f, -91.0f), kHalfPi, kCarColors[1]);
+    DrawCampusCar(glm::vec3(19.0f, 0.0f, -91.0f), kHalfPi, kCarColors[3]);
+    // Carros adicionais espalhados em pontos de interesse.
+    DrawCampusCar(glm::vec3(-24.0f, 0.0f,   -2.0f), kHalfPi, kCarColors[2]); // estac. esq, ponta norte
+    DrawCampusCar(glm::vec3(-24.0f, 0.0f,  -44.0f), kHalfPi, kCarColors[0]); // estac. esq, ponta sul
+    DrawCampusCar(glm::vec3( 16.0f, 0.0f, -100.5f), 0.0f,    kCarColors[4]); // praca da zona segura (sul)
+    DrawCampusCar(glm::vec3( 28.0f, 0.0f,  -90.0f), kHalfPi, kCarColors[2]); // praca da zona segura (leste)
 
-    for (int i = 0; i < 4; ++i)
-    {
-        DrawCampusCar(glm::vec3(-18.0f + i * 9.5f, 0.0f, 2.0f), 3.141592f / 2.0f, kCarColors[(i * 2) % 5]);
-        DrawCampusCar(glm::vec3(8.0f + i * 9.2f, 0.0f, -88.0f), 3.141592f / 2.0f, kCarColors[(i * 2 + 1) % 5]);
-    }
+    // Bancos de madeira em pares (dois lado a lado), encostados nas paredes com o
+    // ENCOSTO voltado para a parede do edificio. yaw define o sentido das costas:
+    // 0 => -Z; PI => +Z; +PI/2 => -X; -PI/2 => +X. Cada par e centrado na posicao.
+    const float kBPi  = 3.1415927f;
+    const float kBPi2 = 1.5707963f;
+    DrawCampusBenchPair(glm::vec3( -6.05f, 0.0f,   -5.05f),  kBPi2); // bloco frente-esq (costas -X)
+    DrawCampusBenchPair(glm::vec3(  7.05f, 0.0f,   -5.05f), -kBPi2); // bloco frente-dir, lado avenida (costas +X)
+    DrawCampusBenchPair(glm::vec3( 18.95f, 0.0f,   -4.82f),  kBPi2); // bloco frente-dir, face leste (costas -X)
+    DrawCampusBenchPair(glm::vec3( -7.28f, 0.0f,  -32.55f),  0.0f);  // fileira 2 (costas -Z)
+    DrawCampusBenchPair(glm::vec3(-15.67f, 0.0f,  -32.55f),  0.0f);  // fileira 2 (costas -Z)
+    DrawCampusBenchPair(glm::vec3( -7.28f, 0.0f,  -74.55f),  0.0f);  // fileira 4 (costas -Z)
+    DrawCampusBenchPair(glm::vec3(-15.67f, 0.0f,  -74.55f),  0.0f);  // fileira 4 (costas -Z)
+    DrawCampusBenchPair(glm::vec3(  3.70f, 0.0f, -101.95f),  kBPi);  // bloco fundo (3) (costas +Z)
+    DrawCampusBenchPair(glm::vec3(-13.58f, 0.0f, -102.45f),  kBPi);  // bloco fundo (-14) (costas +Z)
 
     // Tree belts and courtyard trees.
     for (int i = 0; i < 16; ++i)
@@ -2373,13 +2468,19 @@ void DrawCampusMap()
 
     for (int i = 0; i < 12; i += 2)
     {
-        DrawCampusTree(glm::vec3(-18.0f + i * 3.8f, 0.0f, -27.5f), 0.90f);
-        DrawCampusTree(glm::vec3(-18.0f + i * 3.8f, 0.0f, -69.5f), 0.90f);
+        // Pula a árvore que cairia sobre a avenida central (x em [-2.8, 2.8]).
+        float xl = -18.0f + i * 3.8f;
+        if (fabs(xl) > 3.3f)
+        {
+            DrawCampusTree(glm::vec3(xl, 0.0f, -27.5f), 0.90f);
+            DrawCampusTree(glm::vec3(xl, 0.0f, -69.5f), 0.90f);
+        }
 
         // Pula as árvores da fileira da direita que cairiam dentro dos
-        // prédios-corredor (footprint x:[28,36]).
+        // prédios-corredor (footprint x:[28,36]) ou sobre a rua vertical
+        // direita (footprint x:[22.7, 27.3]).
         float xr = 5.0f + i * 3.3f;
-        if (xr < 27.0f || xr > 37.0f)
+        if (xr < 22.0f || xr > 37.0f)
         {
             DrawCampusTree(glm::vec3(xr, 0.0f, -27.5f), 0.82f);
             DrawCampusTree(glm::vec3(xr, 0.0f, -69.5f), 0.82f);
@@ -2795,6 +2896,11 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
     ObjModel carmodel("../../data/models/car/Car.obj", "../../data/models/car/");
     ComputeNormals(&carmodel);
     BuildTrianglesAndAddToVirtualScene(&carmodel);
+
+    // Banco de madeira: shape unico "Box008" (Z-up, rotacionado em DrawCampusBench).
+    ObjModel benchmodel("../../data/models/wooden-bench/16452_WoodenBench_NEW.obj", "../../data/models/wooden-bench/");
+    ComputeNormals(&benchmodel);
+    BuildTrianglesAndAddToVirtualScene(&benchmodel);
 
     if ( argc > 1 )
     {
