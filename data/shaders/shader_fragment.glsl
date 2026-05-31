@@ -49,8 +49,13 @@ uniform mat4 projection;
 #define WEAPON_WOOD 26
 #define WEAPON_ACCENT 27
 #define ROCKY_FLOOR 28
+// Modelo .obj de carro: cor vem direto do material (.mtl), via u_material_diffuse.
+#define CAR 29
 
 uniform int object_id;
+
+// Cor difusa (Kd) do material atual, usada pelos modelos .obj multi-material (ex.: CAR).
+uniform vec3 u_material_diffuse;
 
 // Quando 1, desativa a neblina (usado pela câmera de mapa).
 uniform int u_map_view_active;
@@ -285,6 +290,11 @@ void main()
     else if ( object_id == LAMP_LIGHT )
     {
         Kd0 = vec3(1.0, 0.82, 0.42);
+    }
+    else if ( object_id == CAR )
+    {
+        // Cada peça do carro usa a cor do seu material no arquivo .mtl.
+        Kd0 = u_material_diffuse;
     }
     else if ( object_id == MONSTER_DRINK )
     {

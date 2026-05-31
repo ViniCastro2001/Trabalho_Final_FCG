@@ -144,7 +144,7 @@ void DrawCampusBuilding(glm::vec3 center, glm::vec3 size, float yaw);
 void DrawCampusCorridorBuilding(glm::vec3 center, glm::vec3 size, float yaw);
 void DrawCampusTree(glm::vec3 position, float scale);
 void DrawCampusPine(glm::vec3 position, float scale);
-void DrawCampusCar(glm::vec3 position, float yaw, int body_material);
+void DrawCampusCar(glm::vec3 position, float yaw, glm::vec3 body_color);
 void DrawCampusMap();
 void DrawSafeZoneBeacon(const SafeZone& safe_zone, float time_seconds);
 void DrawLightPost(const LightPost& post);
@@ -222,6 +222,7 @@ struct SceneObject
     GLuint       vertex_array_object_id; // ID do VAO onde estão armazenados os atributos do modelo
     glm::vec3    bbox_min; // Axis-Aligned Bounding Box do objeto
     glm::vec3    bbox_max;
+    glm::vec3    diffuse = glm::vec3(0.8f); // Cor difusa (Kd) do material .mtl, se houver
 };
 
 // Abaixo definimos variáveis globais utilizadas em várias funções do código.
@@ -283,6 +284,7 @@ GLint g_model_uniform;
 GLint g_view_uniform;
 GLint g_projection_uniform;
 GLint g_object_id_uniform;
+GLint g_material_diffuse_uniform;
 GLint g_bbox_min_uniform;
 GLint g_bbox_max_uniform;
 #if MAP_VIEW_ENABLED
@@ -366,6 +368,7 @@ const int OBJECT_WEAPON_METAL = 25;
 const int OBJECT_WEAPON_WOOD = 26;
 const int OBJECT_WEAPON_ACCENT = 27;
 const int OBJECT_ROCKY_FLOOR = 28;
+const int OBJECT_CAR = 29; // Modelo .obj de carro (multi-material via u_material_diffuse).
 
 bool g_PlayerInvisibleToBigfoot = false;
 #if BIGFOOT_FREEZE_DEBUG_ENABLED
@@ -2242,35 +2245,42 @@ void DrawCampusPine(glm::vec3 position, float scale)
     );
 }
 
-void DrawCampusCar(glm::vec3 position, float yaw, int body_material)
+void DrawCampusCar(glm::vec3 position, float yaw, glm::vec3 body_color)
 {
-    DrawCampusBox(
-        glm::vec3(position.x, position.y + 0.36f, position.z),
-        glm::vec3(2.15f, 0.72f, 4.15f),
-        yaw,
-        body_material
-    );
+    // O modelo "Car.obj" é um único shape com 8 materiais; BuildTriangles o
+    // separou em peças "Car_Cube_<Material>". Coletamos os nomes uma única vez.
+    static std::vector<std::string> car_parts;
+    if (car_parts.empty())
+    {
+        for (const auto& entry : g_VirtualScene)
+            if (entry.first.rfind("Car_Cube_", 0) == 0)
+                car_parts.push_back(entry.first);
+    }
+    if (car_parts.empty())
+        return; // Modelo do carro não foi carregado.
 
-    DrawCampusBox(
-        glm::vec3(position.x, position.y + 0.94f, position.z - 0.25f),
-        glm::vec3(1.45f, 0.46f, 1.65f),
-        yaw,
-        OBJECT_CAR_GLASS
-    );
+    // O modelo nativo tem ~4.67m de comprimento e já nasce apoiado no chão (Y>=0).
+    // Escala uniforme para ~4.3m, preservando as proporções do carro.
+    const float car_scale = 0.92f;
 
-    DrawCampusBox(
-        glm::vec3(position.x - 1.14f, position.y + 0.16f, position.z + 1.20f),
-        glm::vec3(0.24f, 0.32f, 0.56f),
-        yaw,
-        OBJECT_SHOTGUN
-    );
+    glm::mat4 model = Matrix_Translate(position.x, position.y, position.z)
+        * Matrix_Rotate_Y(yaw)
+        * Matrix_Scale(car_scale, car_scale, car_scale);
 
-    DrawCampusBox(
-        glm::vec3(position.x + 1.14f, position.y + 0.16f, position.z + 1.20f),
-        glm::vec3(0.24f, 0.32f, 0.56f),
-        yaw,
-        OBJECT_SHOTGUN
-    );
+    glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+    glUniform1i(g_object_id_uniform, OBJECT_CAR);
+
+    for (const std::string& part : car_parts)
+    {
+        // Cada peça usa a cor do seu material no .mtl; a carroceria ("Body")
+        // recebe a cor escolhida por carro, dando variação ao estacionamento.
+        glm::vec3 color = g_VirtualScene[part].diffuse;
+        if (part == "Car_Cube_Body")
+            color = body_color;
+
+        glUniform3f(g_material_diffuse_uniform, color.r, color.g, color.b);
+        DrawVirtualObject(part.c_str());
+    }
 }
 
 void DrawCampusMap()
@@ -2332,16 +2342,26 @@ void DrawCampusMap()
     DrawCampusBuilding(glm::vec3(13.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f), 0.0f);
 
     // Parking cars.
+    // Paleta de cores de carroceria para variar os carros pelo campus.
+    static const glm::vec3 kCarColors[5] = {
+        glm::vec3(0.62f, 0.07f, 0.06f), // vermelho
+        glm::vec3(0.09f, 0.18f, 0.50f), // azul
+        glm::vec3(0.82f, 0.83f, 0.86f), // prata
+        glm::vec3(0.05f, 0.05f, 0.06f), // preto
+        glm::vec3(0.13f, 0.42f, 0.28f), // verde
+    };
+
+    // Mantemos apenas a fileira externa (x=-25.6), dentro da faixa do estacionamento.
+    // A fileira interna (x=-16.8) caía sobre a área dos prédios, então foi removida.
     for (int i = 0; i < 5; ++i)
     {
-        DrawCampusCar(glm::vec3(-25.6f, 0.0f, -8.0f - i * 8.8f), 0.0f, OBJECT_CAR_BODY);
-        DrawCampusCar(glm::vec3(-16.8f, 0.0f, -8.0f - i * 8.8f), 0.0f, OBJECT_CONCRETE);
+        DrawCampusCar(glm::vec3(-25.6f, 0.0f, -8.0f - i * 8.8f), 0.0f, kCarColors[i % 5]);
     }
 
     for (int i = 0; i < 4; ++i)
     {
-        DrawCampusCar(glm::vec3(-18.0f + i * 9.5f, 0.0f, 2.0f), 3.141592f / 2.0f, (i % 2 == 0) ? OBJECT_CAR_BODY : OBJECT_CONCRETE);
-        DrawCampusCar(glm::vec3(8.0f + i * 9.2f, 0.0f, -88.0f), 3.141592f / 2.0f, (i % 2 == 0) ? OBJECT_CONCRETE : OBJECT_CAR_BODY);
+        DrawCampusCar(glm::vec3(-18.0f + i * 9.5f, 0.0f, 2.0f), 3.141592f / 2.0f, kCarColors[(i * 2) % 5]);
+        DrawCampusCar(glm::vec3(8.0f + i * 9.2f, 0.0f, -88.0f), 3.141592f / 2.0f, kCarColors[(i * 2 + 1) % 5]);
     }
 
     // Tree belts and courtyard trees.
@@ -2769,6 +2789,12 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
     ObjModel monsterdrinkmodel("../../data/models/monster-zero-ultra/MonsterSubs.obj", "../../data/models/monster-zero-ultra/");
     ComputeNormals(&monsterdrinkmodel);
     BuildTrianglesAndAddToVirtualScene(&monsterdrinkmodel);
+
+    // Carro do estacionamento: shape único "Car_Cube" com 8 materiais (.mtl),
+    // separado em peças "Car_Cube_<Material>" por BuildTrianglesAndAddToVirtualScene.
+    ObjModel carmodel("../../data/models/car/Car.obj", "../../data/models/car/");
+    ComputeNormals(&carmodel);
+    BuildTrianglesAndAddToVirtualScene(&carmodel);
 
     if ( argc > 1 )
     {
@@ -3733,6 +3759,7 @@ void LoadShadersFromFiles()
     g_view_uniform       = glGetUniformLocation(g_GpuProgramID, "view"); // Variável da matriz "view" em shader_vertex.glsl
     g_projection_uniform = glGetUniformLocation(g_GpuProgramID, "projection"); // Variável da matriz "projection" em shader_vertex.glsl
     g_object_id_uniform  = glGetUniformLocation(g_GpuProgramID, "object_id"); // Variável "object_id" em shader_fragment.glsl
+    g_material_diffuse_uniform = glGetUniformLocation(g_GpuProgramID, "u_material_diffuse");
     g_bbox_min_uniform   = glGetUniformLocation(g_GpuProgramID, "bbox_min");
     g_bbox_max_uniform   = glGetUniformLocation(g_GpuProgramID, "bbox_max");
 #if MAP_VIEW_ENABLED
@@ -3910,81 +3937,140 @@ void BuildTrianglesAndAddToVirtualScene(ObjModel* model)
     std::vector<float>  normal_coefficients;
     std::vector<float>  texture_coefficients;
 
+    const float minval = std::numeric_limits<float>::min();
+    const float maxval = std::numeric_limits<float>::max();
+
+    // Cor difusa (Kd) de um material do .mtl; cinza neutro quando não há material.
+    auto material_diffuse = [&](int m) -> glm::vec3
+    {
+        if (m >= 0 && m < (int)model->materials.size())
+            return glm::vec3(model->materials[m].diffuse[0],
+                             model->materials[m].diffuse[1],
+                             model->materials[m].diffuse[2]);
+        return glm::vec3(0.8f, 0.8f, 0.8f);
+    };
+    auto material_name = [&](int m) -> std::string
+    {
+        if (m >= 0 && m < (int)model->materials.size())
+            return model->materials[m].name;
+        return std::string("default");
+    };
+
     for (size_t shape = 0; shape < model->shapes.size(); ++shape)
     {
-        size_t first_index = indices.size();
-        size_t num_triangles = model->shapes[shape].mesh.num_face_vertices.size();
+        const tinyobj::mesh_t& mesh = model->shapes[shape].mesh;
+        size_t num_triangles = mesh.num_face_vertices.size();
+        bool has_materials = mesh.material_ids.size() == num_triangles;
 
-        const float minval = std::numeric_limits<float>::min();
-        const float maxval = std::numeric_limits<float>::max();
-
-        glm::vec3 bbox_min = glm::vec3(maxval,maxval,maxval);
-        glm::vec3 bbox_max = glm::vec3(minval,minval,minval);
-
-        for (size_t triangle = 0; triangle < num_triangles; ++triangle)
+        auto tri_material = [&](size_t t) -> int
         {
-            assert(model->shapes[shape].mesh.num_face_vertices[triangle] == 3);
+            return has_materials ? mesh.material_ids[t] : -1;
+        };
 
+        // Ordem de aparição dos materiais usados por este shape.
+        std::vector<int> material_order;
+        for (size_t t = 0; t < num_triangles; ++t)
+        {
+            int m = tri_material(t);
+            if (std::find(material_order.begin(), material_order.end(), m) == material_order.end())
+                material_order.push_back(m);
+        }
+        if (material_order.empty())
+            material_order.push_back(-1);
+
+        // Emite os 3 vértices de um triângulo, atualizando buffers e bbox.
+        auto emit_triangle = [&](size_t triangle, glm::vec3& bmin, glm::vec3& bmax)
+        {
+            assert(mesh.num_face_vertices[triangle] == 3);
             for (size_t vertex = 0; vertex < 3; ++vertex)
             {
-                tinyobj::index_t idx = model->shapes[shape].mesh.indices[3*triangle + vertex];
+                tinyobj::index_t idx = mesh.indices[3*triangle + vertex];
 
-                indices.push_back(first_index + 3*triangle + vertex);
+                indices.push_back((GLuint)(model_coefficients.size() / 4));
 
                 const float vx = model->attrib.vertices[3*idx.vertex_index + 0];
                 const float vy = model->attrib.vertices[3*idx.vertex_index + 1];
                 const float vz = model->attrib.vertices[3*idx.vertex_index + 2];
-                //printf("tri %d vert %d = (%.2f, %.2f, %.2f)\n", (int)triangle, (int)vertex, vx, vy, vz);
                 model_coefficients.push_back( vx ); // X
                 model_coefficients.push_back( vy ); // Y
                 model_coefficients.push_back( vz ); // Z
                 model_coefficients.push_back( 1.0f ); // W
 
-                bbox_min.x = std::min(bbox_min.x, vx);
-                bbox_min.y = std::min(bbox_min.y, vy);
-                bbox_min.z = std::min(bbox_min.z, vz);
-                bbox_max.x = std::max(bbox_max.x, vx);
-                bbox_max.y = std::max(bbox_max.y, vy);
-                bbox_max.z = std::max(bbox_max.z, vz);
+                bmin.x = std::min(bmin.x, vx); bmax.x = std::max(bmax.x, vx);
+                bmin.y = std::min(bmin.y, vy); bmax.y = std::max(bmax.y, vy);
+                bmin.z = std::min(bmin.z, vz); bmax.z = std::max(bmax.z, vz);
 
-                // Inspecionando o código da tinyobjloader, o aluno Bernardo
-                // Sulzbach (2017/1) apontou que a maneira correta de testar se
-                // existem normais e coordenadas de textura no ObjModel é
-                // comparando se o índice retornado é -1. Fazemos isso abaixo.
-
+                // A tinyobjloader retorna índice -1 quando não há normal/textura.
                 if ( idx.normal_index != -1 )
                 {
-                    const float nx = model->attrib.normals[3*idx.normal_index + 0];
-                    const float ny = model->attrib.normals[3*idx.normal_index + 1];
-                    const float nz = model->attrib.normals[3*idx.normal_index + 2];
-                    normal_coefficients.push_back( nx ); // X
-                    normal_coefficients.push_back( ny ); // Y
-                    normal_coefficients.push_back( nz ); // Z
-                    normal_coefficients.push_back( 0.0f ); // W
+                    normal_coefficients.push_back( model->attrib.normals[3*idx.normal_index + 0] );
+                    normal_coefficients.push_back( model->attrib.normals[3*idx.normal_index + 1] );
+                    normal_coefficients.push_back( model->attrib.normals[3*idx.normal_index + 2] );
+                    normal_coefficients.push_back( 0.0f );
                 }
 
                 if ( idx.texcoord_index != -1 )
                 {
-                    const float u = model->attrib.texcoords[2*idx.texcoord_index + 0];
-                    const float v = model->attrib.texcoords[2*idx.texcoord_index + 1];
-                    texture_coefficients.push_back( u );
-                    texture_coefficients.push_back( v );
+                    texture_coefficients.push_back( model->attrib.texcoords[2*idx.texcoord_index + 0] );
+                    texture_coefficients.push_back( model->attrib.texcoords[2*idx.texcoord_index + 1] );
                 }
+            }
+        };
+
+        size_t shape_first_index = indices.size();
+        glm::vec3 shape_bbox_min = glm::vec3(maxval,maxval,maxval);
+        glm::vec3 shape_bbox_max = glm::vec3(minval,minval,minval);
+
+        // Para cada material usado, emitimos suas faces num intervalo contíguo e
+        // (quando há mais de um material) registramos um sub-objeto próprio, com a
+        // cor do .mtl. Assim um único shape multi-material (ex.: o carro) pode ser
+        // desenhado peça a peça com cores diferentes.
+        for (int m : material_order)
+        {
+            size_t group_first_index = indices.size();
+            glm::vec3 group_bbox_min = glm::vec3(maxval,maxval,maxval);
+            glm::vec3 group_bbox_max = glm::vec3(minval,minval,minval);
+
+            for (size_t t = 0; t < num_triangles; ++t)
+            {
+                if (tri_material(t) != m)
+                    continue;
+                emit_triangle(t, group_bbox_min, group_bbox_max);
+            }
+
+            shape_bbox_min.x = std::min(shape_bbox_min.x, group_bbox_min.x);
+            shape_bbox_min.y = std::min(shape_bbox_min.y, group_bbox_min.y);
+            shape_bbox_min.z = std::min(shape_bbox_min.z, group_bbox_min.z);
+            shape_bbox_max.x = std::max(shape_bbox_max.x, group_bbox_max.x);
+            shape_bbox_max.y = std::max(shape_bbox_max.y, group_bbox_max.y);
+            shape_bbox_max.z = std::max(shape_bbox_max.z, group_bbox_max.z);
+
+            if (material_order.size() > 1)
+            {
+                SceneObject part;
+                part.name           = model->shapes[shape].name + "_" + material_name(m);
+                part.first_index    = group_first_index;
+                part.num_indices    = indices.size() - group_first_index;
+                part.rendering_mode = GL_TRIANGLES;
+                part.vertex_array_object_id = vertex_array_object_id;
+                part.bbox_min       = group_bbox_min;
+                part.bbox_max       = group_bbox_max;
+                part.diffuse        = material_diffuse(m);
+                g_VirtualScene[part.name] = part;
             }
         }
 
-        size_t last_index = indices.size() - 1;
-
+        // Objeto cobrindo o shape inteiro (compatível com os modelos existentes,
+        // que têm 1 material só e continuam sendo desenhados pelo nome do shape).
         SceneObject theobject;
         theobject.name           = model->shapes[shape].name;
-        theobject.first_index    = first_index; // Primeiro índice
-        theobject.num_indices    = last_index - first_index + 1; // Número de indices
-        theobject.rendering_mode = GL_TRIANGLES;       // Índices correspondem ao tipo de rasterização GL_TRIANGLES.
+        theobject.first_index    = shape_first_index;
+        theobject.num_indices    = indices.size() - shape_first_index;
+        theobject.rendering_mode = GL_TRIANGLES;
         theobject.vertex_array_object_id = vertex_array_object_id;
-
-        theobject.bbox_min = bbox_min;
-        theobject.bbox_max = bbox_max;
-
+        theobject.bbox_min       = shape_bbox_min;
+        theobject.bbox_max       = shape_bbox_max;
+        theobject.diffuse        = material_diffuse(material_order[0]);
         g_VirtualScene[model->shapes[shape].name] = theobject;
     }
 

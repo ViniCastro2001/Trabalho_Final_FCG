@@ -44,17 +44,13 @@ const std::vector<BoxObstacle>& GetSceneObstacles()
         { glm::vec3(-12.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f) },
         { glm::vec3(13.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f) },
 
-        // Carros no estacionamento esquerdo.
+        // Carros no estacionamento esquerdo (apenas a fileira externa x=-25.6;
+        // a fileira interna x=-16.8 caía dentro dos prédios e foi removida).
         { glm::vec3(-25.6f, 0.60f, -8.0f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-16.8f, 0.60f, -8.0f), glm::vec3(2.3f, 1.2f, 4.2f) },
         { glm::vec3(-25.6f, 0.60f, -16.8f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-16.8f, 0.60f, -16.8f), glm::vec3(2.3f, 1.2f, 4.2f) },
         { glm::vec3(-25.6f, 0.60f, -25.6f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-16.8f, 0.60f, -25.6f), glm::vec3(2.3f, 1.2f, 4.2f) },
         { glm::vec3(-25.6f, 0.60f, -34.4f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-16.8f, 0.60f, -34.4f), glm::vec3(2.3f, 1.2f, 4.2f) },
         { glm::vec3(-25.6f, 0.60f, -43.2f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-16.8f, 0.60f, -43.2f), glm::vec3(2.3f, 1.2f, 4.2f) },
 
         // Carros rotacionados nos estacionamentos da entrada e do fundo.
         { glm::vec3(-18.0f, 0.60f, 2.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
