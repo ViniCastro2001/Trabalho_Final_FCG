@@ -48,8 +48,16 @@ uniform mat4 projection;
 #define WEAPON_METAL 25
 #define WEAPON_WOOD 26
 #define WEAPON_ACCENT 27
+#define ROCKY_FLOOR 28
+// Modelo .obj de carro: cor vem direto do material (.mtl), via u_material_diffuse.
+#define CAR 29
+// Modelo .obj de banco de madeira (wooden-bench).
+#define BENCH 30
 
 uniform int object_id;
+
+// Cor difusa (Kd) do material atual, usada pelos modelos .obj multi-material (ex.: CAR).
+uniform vec3 u_material_diffuse;
 
 // Quando 1, desativa a neblina (usado pela câmera de mapa).
 uniform int u_map_view_active;
@@ -62,6 +70,25 @@ uniform vec4 bbox_max;
 uniform sampler2D TextureImage0;
 uniform sampler2D TextureImage1;
 uniform sampler2D TextureImage2;
+uniform sampler2D TextureImage3;
+
+// Iluminação por postes de luz: até MAX_LIGHTS postes ativos por frame
+// e até MAX_OCCLUDERS AABBs usadas para teste de sombra analítico.
+#define MAX_LIGHTS 8
+#define MAX_OCCLUDERS 32
+
+uniform int  u_num_lights;
+uniform vec3 u_light_pos[MAX_LIGHTS];
+uniform vec3 u_light_color[MAX_LIGHTS];
+uniform float u_light_intensity[MAX_LIGHTS];
+uniform float u_light_range[MAX_LIGHTS];
+
+uniform int  u_num_occluders;
+uniform vec3 u_occluder_min[MAX_OCCLUDERS];
+uniform vec3 u_occluder_max[MAX_OCCLUDERS];
+
+// Modo dia (debug): quando 1, liga um sol direcional + ceu claro.
+uniform int u_day_mode;
 
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
@@ -69,6 +96,22 @@ out vec4 color;
 // Constantes
 #define M_PI   3.14159265358979323846
 #define M_PI_2 1.57079632679489661923
+
+// Interseção raio-AABB pelo método "slab". Retorna true se o raio
+// (origem ro, direção rd normalizada) intersecta a caixa [bmin, bmax];
+// neste caso, t_enter recebe o parâmetro de entrada no volume.
+bool RayHitsAABB(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax, out float t_enter)
+{
+    vec3 inv = 1.0 / rd;
+    vec3 t0s = (bmin - ro) * inv;
+    vec3 t1s = (bmax - ro) * inv;
+    vec3 tsmaller = min(t0s, t1s);
+    vec3 tbigger  = max(t0s, t1s);
+    float tmin = max(max(tsmaller.x, tsmaller.y), tsmaller.z);
+    float tmax = min(min(tbigger.x,  tbigger.y),  tbigger.z);
+    t_enter = tmin;
+    return tmax >= max(tmin, 0.0);
+}
 
 void main()
 {
@@ -207,7 +250,15 @@ void main()
     }
     else if ( object_id == ROAD )
     {
-        float lane = step(0.965, fract(position_world.x * 0.22));
+        // A faixa da pista deve correr ao longo do comprimento da rua. Para isso
+        // medimos a posicao ao longo do eixo da LARGURA (o eixo local mais curto
+        // do quad), obtido das colunas da matriz model. Assim a faixa acompanha a
+        // orientacao da rua (vertical ou horizontal) automaticamente.
+        vec3 x_axis = (model * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
+        vec3 z_axis = (model * vec4(0.0, 0.0, 1.0, 0.0)).xyz;
+        vec3 width_axis = (length(x_axis) <= length(z_axis)) ? normalize(x_axis) : normalize(z_axis);
+        float across = dot(position_world.xyz, width_axis);
+        float lane = step(0.965, fract(across * 0.22));
         Kd0 = mix(vec3(0.095, 0.095, 0.090), vec3(0.70, 0.68, 0.58), lane * 0.40);
     }
     else if ( object_id == SIDEWALK )
@@ -250,6 +301,16 @@ void main()
     {
         Kd0 = vec3(1.0, 0.82, 0.42);
     }
+    else if ( object_id == CAR )
+    {
+        // Cada peça do carro usa a cor do seu material no arquivo .mtl.
+        Kd0 = u_material_diffuse;
+    }
+    else if ( object_id == BENCH )
+    {
+        // Banco de madeira: cor de madeira solida.
+        Kd0 = vec3(0.40, 0.26, 0.13);
+    }
     else if ( object_id == MONSTER_DRINK )
     {
         Kd0 = texture(TextureImage2, texcoords).rgb;
@@ -266,21 +327,112 @@ void main()
     {
         Kd0 = vec3(1.00, 0.88, 0.10); // amarelo
     }
+    else if ( object_id == ROCKY_FLOOR )
+    {
+        // Piso interno dos prédios: textura de rocha, tilada em coordenadas
+        // de mundo para manter a escala constante em qualquer tamanho de piso.
+        Kd0 = texture(TextureImage3, position_world.xz * 0.25).rgb;
+    }
     else if ( object_id == WALL )
     {
-        // Paredes/blocos: textura de tijolos.
-        Kd0 = texture(TextureImage0, texcoords).rgb;
+        // Paredes/blocos: textura de tijolos com mapeamento triplanar em
+        // coordenadas de mundo. Mantém a densidade dos tijolos constante
+        // independente da escala da caixa (evita esticar nas portas/ombreiras).
+        vec3 wp = position_world.xyz * 0.5;
+        vec3 an = abs(n.xyz);
+        vec2 uvw;
+        if (an.x >= an.y && an.x >= an.z)
+            uvw = wp.zy;   // face voltada para X
+        else if (an.z >= an.x && an.z >= an.y)
+            uvw = wp.xy;   // face voltada para Z
+        else
+            uvw = wp.xz;   // face voltada para Y (topo/base)
+        Kd0 = texture(TextureImage0, uvw).rgb;
     }
-    // Equação de Iluminação
-    float lambert = max(0,dot(n,l));
+    // Equação de Iluminação: soma da contribuição de todos os postes de luz
+    // ativos, com atenuação por distância e teste de sombra por interseção
+    // raio-AABB contra os obstáculos do cenário.
+    vec3 ambient = vec3(0.020, 0.022, 0.030); // ambiente noturno bem fraco
+    vec3 accum = vec3(0.0);
+    vec3 frag_pos = p.xyz + n.xyz * 0.02; // offset para evitar self-shadow (acne)
 
-    vec3 lit_color = Kd0 * (lambert * 0.62 + 0.045);
+    for (int i = 0; i < u_num_lights; ++i)
+    {
+        vec3 Lpos = u_light_pos[i];
+        vec3 toL  = Lpos - frag_pos;
+        float dist = length(toL);
+
+        if (dist > u_light_range[i])
+            continue;
+
+        vec3 Ldir = toL / dist;
+
+        // Atenuação física (1 / (1 + k*d^2)) com corte suave no range máximo.
+        float atten = u_light_intensity[i] / (1.0 + 0.18 * dist * dist);
+        atten *= 1.0 - smoothstep(u_light_range[i] * 0.65, u_light_range[i], dist);
+
+        // Teste de sombra: raio do fragmento até a luz; se cruzar algum AABB
+        // antes de chegar lá, fica em sombra.
+        float shadow = 1.0;
+        for (int j = 0; j < u_num_occluders; ++j)
+        {
+            float t;
+            if (RayHitsAABB(frag_pos, Ldir, u_occluder_min[j], u_occluder_max[j], t))
+            {
+                if (t > 0.0 && t < dist - 0.05)
+                {
+                    shadow = 0.0;
+                    break;
+                }
+            }
+        }
+
+        float lambert_n = max(0.0, dot(n.xyz, Ldir));
+        accum += u_light_color[i] * lambert_n * atten * shadow;
+    }
+
+    // Modo dia (debug): sol direcional. Como a luz vem do infinito, o raio de
+    // sombra segue na direcao do sol e qualquer oclusor atingido (t > 0) coloca
+    // o fragmento em sombra. O ceu passa a iluminar o ambiente de forma intensa.
+    if (u_day_mode == 1)
+    {
+        vec3 sun_dir   = normalize(vec3(0.35, 1.0, 0.20)); // da superficie ATE o sol
+        vec3 sun_color = vec3(1.0, 0.96, 0.86);
+        float sun_intensity = 1.15;
+
+        float sun_shadow = 1.0;
+        for (int j = 0; j < u_num_occluders; ++j)
+        {
+            float t;
+            if (RayHitsAABB(frag_pos, sun_dir, u_occluder_min[j], u_occluder_max[j], t))
+            {
+                if (t > 0.0)
+                {
+                    sun_shadow = 0.0;
+                    break;
+                }
+            }
+        }
+
+        float sun_lambert = max(0.0, dot(n.xyz, sun_dir));
+        accum += sun_color * sun_lambert * sun_intensity * sun_shadow;
+
+        // Ceu claro funciona como luz ambiente forte durante o dia.
+        ambient = vec3(0.35, 0.37, 0.42);
+    }
+
+    vec3 lit_color = Kd0 * (accum + ambient);
 
     // Neblina simples por distancia: ajuda a esconder o fim do mapa e melhora
     // o clima de perseguicao sem exigir novos assets.
     float camera_distance = length(camera_position.xyz - p.xyz);
-    float fog_factor = smoothstep(7.0, 42.0, camera_distance);
-    vec3 fog_color = vec3(0.018, 0.021, 0.030);
+    // No modo dia a neblina tem alcance bem maior (so aparece bem longe),
+    // deixando a cena clara; a noite ela comeca perto para esconder o mapa.
+    float fog_factor = (u_day_mode == 1)
+        ? smoothstep(40.0, 140.0, camera_distance)
+        : smoothstep(7.0, 42.0, camera_distance);
+    // No modo dia a neblina combina com o ceu azul; a noite, fica escura.
+    vec3 fog_color = (u_day_mode == 1) ? vec3(0.53, 0.75, 0.92) : vec3(0.018, 0.021, 0.030);
 
     if ( object_id == SAFE_ZONE || object_id == BIGFOOT_EYES || object_id == HUD_BAR_BACK || object_id == HUD_BAR_FILL || object_id == LAMP_LIGHT || object_id == MONSTER_DRINK || object_id == MAP_MARKER_PLAYER || object_id == MAP_MARKER_BIGFOOT || object_id == MAP_MARKER_ITEM )
     {

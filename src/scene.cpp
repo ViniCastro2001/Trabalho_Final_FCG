@@ -4,46 +4,81 @@
 const std::vector<BoxObstacle>& GetSceneObstacles()
 {
     static std::vector<BoxObstacle> obstacles = {
-        // Fileiras principais de predios do campus.
-        { glm::vec3(-11.0f, 3.20f, -18.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
+        // Fileiras principais de predios do campus. Fileira esquerda em x=-12
+        // (simetrica a x=12, com a mesma folga ate a avenida central).
+        { glm::vec3(-12.0f, 3.20f, -18.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
         { glm::vec3(12.0f, 3.20f, -18.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
-        { glm::vec3(-11.0f, 3.20f, -39.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
+        { glm::vec3(-12.0f, 3.20f, -39.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
         { glm::vec3(12.0f, 3.20f, -39.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
-        { glm::vec3(-11.0f, 3.20f, -60.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
+        { glm::vec3(-12.0f, 3.20f, -60.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
         { glm::vec3(12.0f, 3.20f, -60.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
-        { glm::vec3(-11.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
+        { glm::vec3(-12.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
         { glm::vec3(12.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f) },
 
         // Predios laterais e blocos de entrada.
-        { glm::vec3(32.0f, 3.00f, -20.0f), glm::vec3(8.0f, 6.0f, 22.0f) },
-        { glm::vec3(32.0f, 3.00f, -48.0f), glm::vec3(8.0f, 6.0f, 16.0f) },
-        { glm::vec3(32.0f, 3.00f, -72.0f), glm::vec3(8.0f, 6.0f, 16.0f) },
+        // Os 3 predios compridos da direita sao ocos: corredor caminhavel ao longo de Z.
+        // Cada um vira 2 paredes laterais + 4 ombreiras de porta (topo e base), deixando
+        // o miolo (x:[29.5,34.5]) e o vao central (x:[30.75,33.25]) livres.
+        // Predio A (z -9..-31)
+        { glm::vec3(28.75f, 3.0f, -20.0f),  glm::vec3(1.5f,  6.0f, 22.0f) },
+        { glm::vec3(35.25f, 3.0f, -20.0f),  glm::vec3(1.5f,  6.0f, 22.0f) },
+        { glm::vec3(30.125f, 3.0f, -9.5f),  glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -9.5f),  glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(30.125f, 3.0f, -30.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -30.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        // Predio B (z -40..-56)
+        { glm::vec3(28.75f, 3.0f, -48.0f),  glm::vec3(1.5f,  6.0f, 16.0f) },
+        { glm::vec3(35.25f, 3.0f, -48.0f),  glm::vec3(1.5f,  6.0f, 16.0f) },
+        { glm::vec3(30.125f, 3.0f, -40.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -40.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(30.125f, 3.0f, -55.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -55.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        // Predio C (z -64..-80)
+        { glm::vec3(28.75f, 3.0f, -72.0f),  glm::vec3(1.5f,  6.0f, 16.0f) },
+        { glm::vec3(35.25f, 3.0f, -72.0f),  glm::vec3(1.5f,  6.0f, 16.0f) },
+        { glm::vec3(30.125f, 3.0f, -64.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -64.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(30.125f, 3.0f, -79.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
+        { glm::vec3(33.875f, 3.0f, -79.5f), glm::vec3(1.25f, 6.0f, 1.0f) },
         { glm::vec3(-14.0f, 3.20f, -96.0f), glm::vec3(16.0f, 6.4f, 12.0f) },
         { glm::vec3(3.0f, 3.20f, -97.0f), glm::vec3(12.0f, 6.4f, 9.0f) },
         { glm::vec3(-12.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f) },
         { glm::vec3(13.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f) },
 
-        // Carros no estacionamento esquerdo.
-        { glm::vec3(-25.6f, 0.60f, -8.0f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-16.8f, 0.60f, -8.0f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-25.6f, 0.60f, -16.8f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-16.8f, 0.60f, -16.8f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-25.6f, 0.60f, -25.6f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-16.8f, 0.60f, -25.6f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-25.6f, 0.60f, -34.4f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-16.8f, 0.60f, -34.4f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-25.6f, 0.60f, -43.2f), glm::vec3(2.3f, 1.2f, 4.2f) },
-        { glm::vec3(-16.8f, 0.60f, -43.2f), glm::vec3(2.3f, 1.2f, 4.2f) },
+        // Carros estacionados (espelham as chamadas DrawCampusCar em main.cpp).
+        // Estacionamento lateral esquerdo (comprimento em X).
+        { glm::vec3(-24.0f, 0.60f, -14.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
+        { glm::vec3(-24.0f, 0.60f, -20.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
+        { glm::vec3(-24.0f, 0.60f, -26.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
+        { glm::vec3(-24.0f, 0.60f, -32.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
+        { glm::vec3(-24.0f, 0.60f, -38.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
+        // Praca/estacionamento frontal (comprimento em Z).
+        { glm::vec3(-20.0f, 0.60f, 5.5f), glm::vec3(2.3f, 1.2f, 4.2f) },
+        { glm::vec3(-13.0f, 0.60f, 5.5f), glm::vec3(2.3f, 1.2f, 4.2f) },
+        { glm::vec3(-7.0f, 0.60f, 5.5f), glm::vec3(2.3f, 1.2f, 4.2f) },
+        { glm::vec3(7.0f, 0.60f, 5.5f), glm::vec3(2.3f, 1.2f, 4.2f) },
+        { glm::vec3(13.0f, 0.60f, 5.5f), glm::vec3(2.3f, 1.2f, 4.2f) },
+        { glm::vec3(20.0f, 0.60f, 5.5f), glm::vec3(2.3f, 1.2f, 4.2f) },
+        // Praca da zona segura (comprimento em X).
+        { glm::vec3(14.0f, 0.60f, -91.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
+        { glm::vec3(19.0f, 0.60f, -91.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
+        // Carros adicionais espalhados em pontos de interesse.
+        { glm::vec3(-24.0f, 0.60f, -2.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
+        { glm::vec3(-24.0f, 0.60f, -44.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
+        { glm::vec3(16.0f, 0.60f, -100.5f), glm::vec3(2.3f, 1.2f, 4.2f) },
+        { glm::vec3(28.0f, 0.60f, -90.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
 
-        // Carros rotacionados nos estacionamentos da entrada e do fundo.
-        { glm::vec3(-18.0f, 0.60f, 2.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
-        { glm::vec3(-8.5f, 0.60f, 2.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
-        { glm::vec3(1.0f, 0.60f, 2.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
-        { glm::vec3(10.5f, 0.60f, 2.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
-        { glm::vec3(8.0f, 0.60f, -88.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
-        { glm::vec3(17.2f, 0.60f, -88.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
-        { glm::vec3(26.4f, 0.60f, -88.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
-        { glm::vec3(35.6f, 0.60f, -88.0f), glm::vec3(4.2f, 1.2f, 2.3f) },
+        // Bancos de madeira em pares. Uma caixa por par; tamanho conforme o yaw
+        // (costas para a parede). Espelham DrawCampusBenchPair em main.cpp.
+        { glm::vec3( -6.05f, 0.45f,   -5.05f), glm::vec3(0.8f, 0.9f, 3.6f) }, // frente-esq
+        { glm::vec3(  7.05f, 0.45f,   -5.05f), glm::vec3(0.8f, 0.9f, 3.6f) }, // frente-dir (avenida)
+        { glm::vec3( 18.95f, 0.45f,   -4.82f), glm::vec3(0.8f, 0.9f, 3.6f) }, // frente-dir (leste)
+        { glm::vec3( -7.28f, 0.45f,  -32.55f), glm::vec3(3.6f, 0.9f, 0.8f) }, // fileira 2
+        { glm::vec3(-15.67f, 0.45f,  -32.55f), glm::vec3(3.6f, 0.9f, 0.8f) }, // fileira 2
+        { glm::vec3( -7.28f, 0.45f,  -74.55f), glm::vec3(3.6f, 0.9f, 0.8f) }, // fileira 4
+        { glm::vec3(-15.67f, 0.45f,  -74.55f), glm::vec3(3.6f, 0.9f, 0.8f) }, // fileira 4
+        { glm::vec3(  3.70f, 0.45f, -101.95f), glm::vec3(3.6f, 0.9f, 0.8f) }, // fundo (3)
+        { glm::vec3(-13.58f, 0.45f, -102.45f), glm::vec3(3.6f, 0.9f, 0.8f) }, // fundo (-14)
 
         // Troncos de arvores internas.
         { glm::vec3(-38.0f, 1.2f, 8.0f), glm::vec3(0.9f, 2.4f, 0.9f) },
@@ -128,10 +163,23 @@ const std::vector<BoxObstacle>& GetSceneObstacles()
         // do Pé Grande atravessar sem ficar travado entre troncos.
         for (int i = 0; i < 12; i += 2)
         {
-            add_tree_collision(glm::vec3(-18.0f + i * 3.8f, 0.0f, -27.5f), 0.90f);
-            add_tree_collision(glm::vec3(5.0f + i * 3.3f, 0.0f, -27.5f), 0.82f);
-            add_tree_collision(glm::vec3(-18.0f + i * 3.8f, 0.0f, -69.5f), 0.90f);
-            add_tree_collision(glm::vec3(5.0f + i * 3.3f, 0.0f, -69.5f), 0.82f);
+            // Pula a árvore que cairia sobre a avenida central (x em [-2.8, 2.8]).
+            float xl = -18.0f + i * 3.8f;
+            if (xl < -3.3f || xl > 3.3f)
+            {
+                add_tree_collision(glm::vec3(xl, 0.0f, -27.5f), 0.90f);
+                add_tree_collision(glm::vec3(xl, 0.0f, -69.5f), 0.90f);
+            }
+
+            // Pula as árvores da fileira da direita que cairiam dentro dos
+            // prédios-corredor (footprint x:[28,36]) ou sobre a rua vertical
+            // direita (footprint x:[22.7, 27.3]).
+            float xr = 5.0f + i * 3.3f;
+            if (xr < 22.0f || xr > 37.0f)
+            {
+                add_tree_collision(glm::vec3(xr, 0.0f, -27.5f), 0.82f);
+                add_tree_collision(glm::vec3(xr, 0.0f, -69.5f), 0.82f);
+            }
         }
 
         for (int i = 0; i < 31; ++i)
@@ -180,6 +228,54 @@ const std::vector<BoxObstacle>& GetSceneObstacles()
     return obstacles;
 }
 
+const std::vector<BuildingPortal>& GetSceneBuildingPortals()
+{
+    // Os 3 prédios-corredor da direita. Centro do corredor em x = 32.0, miolo
+    // caminhável x:[29.5, 34.5], vão de porta x:[30.75, 33.25]. As portas ficam
+    // nas duas extremidades de Z (mesmos z das ombreiras em GetSceneObstacles()).
+    // approach = ~2.5 m FORA da porta (na rua); inside = ~2.5 m DENTRO do corredor.
+    static const std::vector<BuildingPortal> portals = {
+        // Prédio A (z -9.5 .. -30.5)
+        {
+            glm::vec3(29.5f, 0.0f, -30.5f), glm::vec3(34.5f, 0.0f, -9.5f),
+            { glm::vec2(32.0f, -9.5f),  glm::vec2(32.0f, -30.5f) },
+            { glm::vec2(32.0f, -7.0f),  glm::vec2(32.0f, -33.0f) },
+            { glm::vec2(32.0f, -12.0f), glm::vec2(32.0f, -28.0f) }
+        },
+        // Prédio B (z -40.5 .. -55.5)
+        {
+            glm::vec3(29.5f, 0.0f, -55.5f), glm::vec3(34.5f, 0.0f, -40.5f),
+            { glm::vec2(32.0f, -40.5f), glm::vec2(32.0f, -55.5f) },
+            { glm::vec2(32.0f, -38.0f), glm::vec2(32.0f, -58.0f) },
+            { glm::vec2(32.0f, -43.0f), glm::vec2(32.0f, -53.0f) }
+        },
+        // Prédio C (z -64.5 .. -79.5)
+        {
+            glm::vec3(29.5f, 0.0f, -79.5f), glm::vec3(34.5f, 0.0f, -64.5f),
+            { glm::vec2(32.0f, -64.5f), glm::vec2(32.0f, -79.5f) },
+            { glm::vec2(32.0f, -62.0f), glm::vec2(32.0f, -82.0f) },
+            { glm::vec2(32.0f, -67.0f), glm::vec2(32.0f, -77.0f) }
+        }
+    };
+
+    return portals;
+}
+
+const std::vector<BoxObstacle>& GetSceneLightOccluders()
+{
+    // Tetos dos 3 prédios-corredor da direita. Cobrem todo o footprint
+    // (x:[28,36]) no topo das paredes, bloqueando a luz da rua/sol que
+    // entraria por cima do corredor. Não entram em GetSceneObstacles() para
+    // não fechar a passagem (a colisão ignora Y e bloquearia o miolo).
+    static const std::vector<BoxObstacle> light_occluders = {
+        { glm::vec3(32.0f, 6.1f, -20.0f), glm::vec3(8.0f, 0.4f, 22.0f) },
+        { glm::vec3(32.0f, 6.1f, -48.0f), glm::vec3(8.0f, 0.4f, 16.0f) },
+        { glm::vec3(32.0f, 6.1f, -72.0f), glm::vec3(8.0f, 0.4f, 16.0f) }
+    };
+
+    return light_occluders;
+}
+
 std::vector<Collectible>& GetSceneCollectibles()
 {
     static std::vector<Collectible> collectibles = {
@@ -201,4 +297,31 @@ const SafeZone& GetSafeZone()
     };
 
     return safe_zone;
+}
+
+const std::vector<LightPost>& GetSceneLightPosts()
+{
+    // Cor amarelo-quente padrão das lâmpadas de sódio; vermelha junto da zona segura.
+    static const glm::vec3 warm_yellow = glm::vec3(1.00f, 0.82f, 0.45f);
+    static const glm::vec3 safe_red    = glm::vec3(1.00f, 0.30f, 0.20f);
+    static const glm::vec3 bulb_offset = glm::vec3(0.0f, 4.6f, 0.0f);
+
+    static const std::vector<LightPost> light_posts = {
+        { glm::vec3( -4.30f, 0.0f,  -0.32f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3(  4.27f, 0.0f, -32.01f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3( -3.73f, 0.0f, -53.65f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3(  3.97f, 0.0f, -74.01f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3( -3.58f, 0.0f, -89.90f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3( 17.16f, 0.0f, -95.43f), bulb_offset, safe_red,    28.0f, 28.0f },
+        { glm::vec3( 28.10f, 0.0f, -82.19f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3( 28.31f, 0.0f, -59.98f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3( 28.31f, 0.0f, -35.09f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3( 21.36f, 0.0f, -12.33f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3(-19.68f, 0.0f,  -8.05f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3(-20.60f, 0.0f, -32.46f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3(-21.05f, 0.0f, -74.48f), bulb_offset, warm_yellow, 28.0f, 28.0f },
+        { glm::vec3(-35.02f, 0.0f, -108.31f), bulb_offset, warm_yellow, 28.0f, 28.0f }
+    };
+
+    return light_posts;
 }
