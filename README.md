@@ -1,9 +1,23 @@
-# Computação Gráfica e Visualização I (INF01047) - INF/UFRGS
+# Pe Grande do Vale
 
-Este repositório contém o código base para o trabalho final. O enunciado completo do trabalho final está no Moodle:
+Jogo em primeira pessoa desenvolvido para o trabalho final de Computacao
+Grafica e Visualizacao I (INF01047) - INF/UFRGS.
 
+## Build
 
-https://moodle.ufrgs.br/mod/assign/view.php?id=6018620
+```powershell
+cmake --preset default-config
+cmake --build --preset default-build
+```
+
+## Executar
+
+```powershell
+.\bin\Debug\main.exe
+```
+
+O executavel espera encontrar os assets em `data/` e os shaders ativos em
+`data/shaders/`.
 
 ## Controles principais
 

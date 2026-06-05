@@ -251,64 +251,6 @@ static glm::vec3 ChooseChaseDirection(glm::vec3 position, glm::vec3 desired_dire
     return best_direction;
 }
 
-// Prédios-corredor da direita: footprint XZ e as duas portas (centro em X,
-// nas pontas em Z). Mantido em sincronia com DrawCampusCorridorBuilding /
-// GetSceneObstacles. As paredes são uma casca fechada exceto pelos vãos, então
-// o steering local não acha a porta sozinho; tratamos a porta como waypoint.
-struct CorridorBuilding
-{
-    float x_min, x_max, z_min, z_max; // footprint no plano XZ
-    float door_x;                     // x do centro dos vãos de porta
-    float door_z_a, door_z_b;         // z das duas portas (extremidades)
-};
-
-static const CorridorBuilding kCorridorBuildings[] = {
-    { 28.0f, 36.0f, -31.0f,  -9.0f, 32.0f,  -9.0f, -31.0f },
-    { 28.0f, 36.0f, -56.0f, -40.0f, 32.0f, -40.0f, -56.0f },
-    { 28.0f, 36.0f, -80.0f, -64.0f, 32.0f, -64.0f, -80.0f }
-};
-
-static bool PointInFootprintXZ(glm::vec3 p, const CorridorBuilding& b)
-{
-    return p.x >= b.x_min && p.x <= b.x_max && p.z >= b.z_min && p.z <= b.z_max;
-}
-
-// Escolhe, entre as duas portas do prédio, a que minimiza o caminho
-// Pé Grande -> porta -> player.
-static glm::vec3 BestDoorFor(const CorridorBuilding& b, glm::vec3 bigfoot_pos, glm::vec3 player_pos)
-{
-    glm::vec3 door_a = glm::vec3(b.door_x, bigfoot_pos.y, b.door_z_a);
-    glm::vec3 door_b = glm::vec3(b.door_x, bigfoot_pos.y, b.door_z_b);
-
-    float cost_a = DistanceXZ(bigfoot_pos, door_a) + DistanceXZ(door_a, player_pos);
-    float cost_b = DistanceXZ(bigfoot_pos, door_b) + DistanceXZ(door_b, player_pos);
-
-    return (cost_a <= cost_b) ? door_a : door_b;
-}
-
-// Alvo efetivo da perseguição. Se a casca de um prédio-corredor separa o
-// Pé Grande do player, devolve a porta por onde ele deve passar; caso
-// contrário, devolve a própria posição do player.
-static glm::vec3 ResolveChaseTarget(glm::vec3 bigfoot_pos, glm::vec3 player_pos)
-{
-    // 1) Se ele está dentro de um prédio e o player não está no mesmo,
-    //    primeiro precisa sair pela porta.
-    for (const CorridorBuilding& b : kCorridorBuildings)
-    {
-        if (PointInFootprintXZ(bigfoot_pos, b) && !PointInFootprintXZ(player_pos, b))
-            return BestDoorFor(b, bigfoot_pos, player_pos);
-    }
-
-    // 2) Se o player está dentro de um prédio e ele não, precisa entrar pela porta.
-    for (const CorridorBuilding& b : kCorridorBuildings)
-    {
-        if (PointInFootprintXZ(player_pos, b) && !PointInFootprintXZ(bigfoot_pos, b))
-            return BestDoorFor(b, bigfoot_pos, player_pos);
-    }
-
-    return player_pos;
-}
-
 void Bigfoot::StartFleeing(glm::vec3 player_position)
 {
 
@@ -505,10 +447,12 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
 
     if (state == BigfootState::Chasing)
     {
-        // Distância real até o player decide o ataque.
-        glm::vec3 to_player = player_position - position;
-        to_player.y = 0.0f;
-        float distance = sqrt(to_player.x*to_player.x + to_player.z*to_player.z);
+        glm::vec3 direction = player_position - position;
+
+        // Ignoramos o eixo Y para o Pé Grande perseguir no chão.
+        direction.y = 0.0f;
+
+        float distance = sqrt(direction.x*direction.x + direction.z*direction.z);
 
         if (distance <= attack_range)
         {
@@ -516,17 +460,9 @@ void Bigfoot::Update(glm::vec3 player_position, float delta_t)
             return;
         }
 
-        // Alvo efetivo: o player, ou a porta de um prédio-corredor quando a
-        // parede está entre os dois (assim ele entra/sai em vez de empurrar a parede).
-        glm::vec3 target = ResolveChaseTarget(position, player_position);
-        glm::vec3 direction = target - position;
-        direction.y = 0.0f;
-
-        float dir_len = sqrt(direction.x*direction.x + direction.z*direction.z);
-
-        if (dir_len > 0.0f)
+        if (distance > 0.0f)
         {
-            direction = direction / dir_len;
+            direction = direction / distance;
 
             float amount = speed * delta_t;
             glm::vec3 chase_direction = ChooseChaseDirection(position, direction, radius, amount * 1.4f);

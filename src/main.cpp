@@ -141,16 +141,11 @@ void DrawFirstPersonWeapon(glm::vec4 camera_position, glm::vec4 camera_view, glm
 void DrawCampusSurface(glm::vec3 center, glm::vec3 size, float yaw, int material);
 void DrawCampusBox(glm::vec3 center, glm::vec3 size, float yaw, int material);
 void DrawCampusBuilding(glm::vec3 center, glm::vec3 size, float yaw);
-void DrawCampusCorridorBuilding(glm::vec3 center, glm::vec3 size, float yaw);
 void DrawCampusTree(glm::vec3 position, float scale);
 void DrawCampusPine(glm::vec3 position, float scale);
-void DrawCampusCar(glm::vec3 position, float yaw, glm::vec3 body_color);
-void DrawCampusBench(glm::vec3 position, float yaw);
-void DrawCampusBenchPair(glm::vec3 center, float yaw);
+void DrawCampusCar(glm::vec3 position, float yaw, int body_material);
 void DrawCampusMap();
 void DrawSafeZoneBeacon(const SafeZone& safe_zone, float time_seconds);
-void DrawLightPost(const LightPost& post);
-void UpdateLightingUniforms(glm::vec3 viewer_position);
 GLuint LoadShader_Vertex(const char* filename);   // Carrega um vertex shader
 GLuint LoadShader_Fragment(const char* filename); // Carrega um fragment shader
 void LoadShader(const char* filename, GLuint shader_id); // Função utilizada pelas duas acima
@@ -224,7 +219,6 @@ struct SceneObject
     GLuint       vertex_array_object_id; // ID do VAO onde estão armazenados os atributos do modelo
     glm::vec3    bbox_min; // Axis-Aligned Bounding Box do objeto
     glm::vec3    bbox_max;
-    glm::vec3    diffuse = glm::vec3(0.8f); // Cor difusa (Kd) do material .mtl, se houver
 };
 
 // Abaixo definimos variáveis globais utilizadas em várias funções do código.
@@ -286,26 +280,10 @@ GLint g_model_uniform;
 GLint g_view_uniform;
 GLint g_projection_uniform;
 GLint g_object_id_uniform;
-GLint g_material_diffuse_uniform;
 GLint g_bbox_min_uniform;
 GLint g_bbox_max_uniform;
 #if MAP_VIEW_ENABLED
 GLint g_map_view_uniform;
-#endif
-
-// Locations dos uniforms de iluminação por postes de luz.
-const int MAX_LIGHTS_CPU = 8;
-const int MAX_OCCLUDERS_CPU = 32;
-GLint g_num_lights_uniform = -1;
-GLint g_light_pos_uniform = -1;
-GLint g_light_color_uniform = -1;
-GLint g_light_intensity_uniform = -1;
-GLint g_light_range_uniform = -1;
-GLint g_num_occluders_uniform = -1;
-GLint g_occluder_min_uniform = -1;
-GLint g_occluder_max_uniform = -1;
-#if DAY_MODE_DEBUG_ENABLED
-GLint g_day_mode_uniform = -1;
 #endif
 
 // Número de texturas carregadas pela função LoadTextureImage()
@@ -369,20 +347,8 @@ const int OBJECT_MONSTER_DRINK = 21;
 const int OBJECT_WEAPON_METAL = 25;
 const int OBJECT_WEAPON_WOOD = 26;
 const int OBJECT_WEAPON_ACCENT = 27;
-const int OBJECT_ROCKY_FLOOR = 28;
-const int OBJECT_CAR = 29; // Modelo .obj de carro (multi-material via u_material_diffuse).
-const int OBJECT_BENCH = 30; // Modelo .obj de banco de madeira (wooden-bench).
 
 bool g_PlayerInvisibleToBigfoot = false;
-#if BIGFOOT_FREEZE_DEBUG_ENABLED
-bool g_BigfootFrozen = false;
-#endif
-#if SHOW_COORDS_DEBUG_ENABLED
-bool g_ShowCoordsDebug = false;
-#endif
-#if DAY_MODE_DEBUG_ENABLED
-bool g_DayMode = false;
-#endif
 bool g_InfiniteAdrenalineCheat = false;
 bool g_SpectatorMode = false;
 bool g_SpectatorWantsShoot = false;
@@ -395,11 +361,6 @@ glm::vec3 g_SpectatorDetourDirection = glm::vec3(0.0f, 0.0f, 0.0f);
 bool g_SpectatorHasLastPosition = false;
 float g_SpectatorStuckTimer = 0.0f;
 float g_SpectatorDetourTimer = 0.0f;
-// Trânsito atual por uma porta de prédio-corredor (roteamento de entrada/saída).
-// Mode: 0 = nenhum, 1 = entrando, 2 = saindo. Portal/Door indexam GetSceneBuildingPortals().
-int g_SpectatorTransitMode = 0;
-int g_SpectatorTransitPortal = -1;
-int g_SpectatorTransitDoor = -1;
 float g_ShotgunRecoilTimer = 0.0f;
 float g_PlayerFallTimer = 0.0f;
 bool g_PlayerFallAnimationStarted = false;
@@ -692,12 +653,7 @@ void RandomizeCollectibleSpawns()
         {  35.0f,  44.0f, -84.0f,   4.0f }, // faixa aberta leste
         { -18.0f,  18.0f, -74.0f, -66.0f }, // corredor entre blocos
         { -18.0f,  18.0f, -53.0f, -47.0f },
-        { -18.0f,  18.0f, -32.0f, -26.0f },
-        // Interior dos 3 prédios-corredor da direita. A faixa de x fica estreita
-        // (~32) para respeitar a folga das paredes laterais; z recuado das portas.
-        {  31.7f,  32.3f, -28.0f, -12.0f }, // dentro do prédio A
-        {  31.7f,  32.3f, -53.0f, -43.0f }, // dentro do prédio B
-        {  31.7f,  32.3f, -77.0f, -67.0f }  // dentro do prédio C
+        { -18.0f,  18.0f, -32.0f, -26.0f }
     };
 
     static const glm::vec3 fallback_positions[] = {
@@ -784,9 +740,6 @@ void ResetGame(bool start_playing)
     g_SpectatorHasLastPosition = false;
     g_SpectatorStuckTimer = 0.0f;
     g_SpectatorDetourTimer = 0.0f;
-    g_SpectatorTransitMode = 0;
-    g_SpectatorTransitPortal = -1;
-    g_SpectatorTransitDoor = -1;
     g_PlayerFallTimer = 0.0f;
     g_PlayerFallAnimationStarted = false;
     g_CameraBobTimer = 0.0f;
@@ -1105,143 +1058,6 @@ static glm::vec3 SpectatorObjectiveTarget(glm::vec3 player_position)
     return GetSafeZone().center;
 }
 
-// Índice do prédio-corredor cujo miolo caminhável contém o ponto p (XZ), ou -1.
-static int SpectatorPortalContaining(glm::vec3 p)
-{
-    const std::vector<BuildingPortal>& portals = GetSceneBuildingPortals();
-
-    for (size_t i = 0; i < portals.size(); ++i)
-    {
-        const BuildingPortal& bp = portals[i];
-
-        if (p.x >= bp.interior_min.x && p.x <= bp.interior_max.x &&
-            p.z >= bp.interior_min.z && p.z <= bp.interior_max.z)
-        {
-            return (int)i;
-        }
-    }
-
-    return -1;
-}
-
-static float SpectatorDistXZ(glm::vec3 a, glm::vec2 b)
-{
-    float dx = a.x - b.x;
-    float dz = a.z - b.y;
-    return sqrt(dx*dx + dz*dz);
-}
-
-// Escolhe a porta (0/1) de menor custo total para o trânsito desejado.
-// enter == true: minimiza chegar à porta + alcançar o objetivo por dentro.
-// enter == false: minimiza alcançar a porta por dentro + sair em direção ao objetivo.
-static int SpectatorChooseDoor(const BuildingPortal& bp, glm::vec3 player, glm::vec3 objective, bool enter)
-{
-    int best = 0;
-    float best_cost = 1e9f;
-
-    for (int d = 0; d < 2; ++d)
-    {
-        float cost = enter
-            ? SpectatorDistXZ(player, bp.approach[d]) + SpectatorDistXZ(objective, bp.inside[d])
-            : SpectatorDistXZ(player, bp.inside[d])  + SpectatorDistXZ(objective, bp.approach[d]);
-
-        if (cost < best_cost)
-        {
-            best_cost = cost;
-            best = d;
-        }
-    }
-
-    return best;
-}
-
-// Decide o alvo imediato da navegação: o próprio objetivo, ou um waypoint de
-// porta quando é preciso entrar/sair de um prédio-corredor. Quando estamos
-// atravessando o vão estreito, out_threading vira true para o steering ir reto.
-static glm::vec3 SpectatorNavTarget(glm::vec3 player, glm::vec3 objective, bool* out_threading)
-{
-    *out_threading = false;
-
-    const std::vector<BuildingPortal>& portals = GetSceneBuildingPortals();
-    int obj_portal    = SpectatorPortalContaining(objective);
-    int player_portal = SpectatorPortalContaining(player);
-
-    if (obj_portal >= 0 && player_portal != obj_portal)
-    {
-        // Precisa ENTRAR no prédio do objetivo.
-        if (g_SpectatorTransitMode != 1 || g_SpectatorTransitPortal != obj_portal)
-        {
-            g_SpectatorTransitMode = 1;
-            g_SpectatorTransitPortal = obj_portal;
-            g_SpectatorTransitDoor = SpectatorChooseDoor(portals[obj_portal], player, objective, true);
-        }
-    }
-    else if (player_portal >= 0 && obj_portal != player_portal)
-    {
-        // Precisa SAIR do prédio onde está.
-        if (g_SpectatorTransitMode != 2 || g_SpectatorTransitPortal != player_portal)
-        {
-            g_SpectatorTransitMode = 2;
-            g_SpectatorTransitPortal = player_portal;
-            g_SpectatorTransitDoor = SpectatorChooseDoor(portals[player_portal], player, objective, false);
-        }
-    }
-    else
-    {
-        // Mesmo prédio ou ambos na rua: vai direto ao objetivo.
-        g_SpectatorTransitMode = 0;
-        g_SpectatorTransitPortal = -1;
-        g_SpectatorTransitDoor = -1;
-        return objective;
-    }
-
-    const BuildingPortal& bp = portals[g_SpectatorTransitPortal];
-    int d = g_SpectatorTransitDoor;
-
-    glm::vec3 approach = glm::vec3(bp.approach[d].x, player.y, bp.approach[d].y);
-    glm::vec3 inside   = glm::vec3(bp.inside[d].x,   player.y, bp.inside[d].y);
-    glm::vec3 door     = glm::vec3(bp.door_center[d].x, player.y, bp.door_center[d].y);
-
-    bool aligned = fabs(player.x - door.x) < 1.1f;
-    float zmin = fmin(approach.z, inside.z) - 0.4f;
-    float zmax = fmax(approach.z, inside.z) + 0.4f;
-    bool in_throat = aligned && player.z > zmin && player.z < zmax;
-    bool inside_building = SpectatorPortalContaining(player) == g_SpectatorTransitPortal;
-
-    if (g_SpectatorTransitMode == 1)
-    {
-        // Entrando: contorna até o approach pela rua; quando alinhado no vão,
-        // atravessa reto rumo ao ponto interno; ao entrar, segue ao objetivo.
-        if (inside_building)
-        {
-            g_SpectatorTransitMode = 0;
-            g_SpectatorTransitPortal = -1;
-            g_SpectatorTransitDoor = -1;
-            return objective;
-        }
-
-        if (in_throat)
-        {
-            *out_threading = true;
-            return inside;
-        }
-
-        return approach;
-    }
-
-    // Saindo: empurra reto pelo vão rumo ao approach até estar de fato na rua.
-    if (!inside_building && !in_throat)
-    {
-        g_SpectatorTransitMode = 0;
-        g_SpectatorTransitPortal = -1;
-        g_SpectatorTransitDoor = -1;
-        return objective;
-    }
-
-    *out_threading = true;
-    return approach;
-}
-
 void UpdateSpectatorController(float delta_t)
 {
     g_SpectatorWantsShoot = false;
@@ -1254,23 +1070,14 @@ void UpdateSpectatorController(float delta_t)
     glm::vec4 camera_position = g_Camera.GetPosition();
     glm::vec3 player_position = glm::vec3(camera_position.x, camera_position.y, camera_position.z);
     glm::vec3 objective = SpectatorObjectiveTarget(player_position);
-
-    // Roteia entrada/saída dos prédios-corredor por waypoints de porta. O alvo
-    // imediato (nav_target) pode ser uma porta; threading indica que estamos no
-    // vão estreito e devemos ir reto, sem desvios.
-    bool threading = false;
-    glm::vec3 nav_target = SpectatorNavTarget(player_position, objective, &threading);
-
-    glm::vec3 desired_move = nav_target - player_position;
+    glm::vec3 desired_move = objective - player_position;
     desired_move.y = 0.0f;
 
     glm::vec3 bigfoot_position;
     float bigfoot_distance = 0.0f;
     bool has_bigfoot = SpectatorNearestLiveBigfoot(player_position, &bigfoot_position, &bigfoot_distance);
 
-    // Atravessando um vão de porta, ignoramos a evasão do Pé Grande: desviar no
-    // meio da porta jogaria a IA contra as ombreiras.
-    if (!threading && has_bigfoot && bigfoot_distance < 10.0f)
+    if (has_bigfoot && bigfoot_distance < 10.0f)
     {
         glm::vec3 away = NormalizeXZ(player_position - bigfoot_position);
         desired_move = NormalizeXZ(desired_move) * 0.75f + away * 1.20f;
@@ -1301,44 +1108,24 @@ void UpdateSpectatorController(float delta_t)
     if (g_SpectatorDetourTimer > 0.0f)
         g_SpectatorDetourTimer -= delta_t;
 
-    if (threading)
+    bool path_blocked_soon = SpectatorDirectionBlocked(player_position, direct_move, 2.8f);
+
+    if ((g_SpectatorStuckTimer > 0.35f || path_blocked_soon) &&
+        g_SpectatorDetourTimer <= 0.0f)
     {
-        // Dentro do vão: vai reto até o waypoint, sem leque nem desvio (que só
-        // empurrariam contra as ombreiras da porta).
-        g_SpectatorMovementDirection = direct_move;
-        g_SpectatorDetourTimer = 0.0f;
-        g_SpectatorStuckTimer = 0.0f;
+        g_SpectatorDetourDirection = SpectatorChooseClearDirection(player_position, direct_move);
+        g_SpectatorDetourTimer = g_SpectatorStuckTimer > 0.35f ? 1.35f : 0.75f;
+    }
+
+    if (g_SpectatorDetourTimer > 0.0f &&
+        (g_SpectatorDetourDirection.x != 0.0f || g_SpectatorDetourDirection.z != 0.0f) &&
+        !SpectatorDirectionBlocked(player_position, g_SpectatorDetourDirection, 1.7f))
+    {
+        g_SpectatorMovementDirection = g_SpectatorDetourDirection;
     }
     else
     {
-        // Se ficou preso tentando alcançar a porta, troca para a outra porta do
-        // mesmo prédio (o caminho até esta pode estar bloqueado por carro/árvore).
-        if (g_SpectatorTransitMode != 0 && g_SpectatorStuckTimer > 1.2f)
-        {
-            g_SpectatorTransitDoor = 1 - g_SpectatorTransitDoor;
-            g_SpectatorStuckTimer = 0.0f;
-            g_SpectatorDetourTimer = 0.0f;
-        }
-
-        bool path_blocked_soon = SpectatorDirectionBlocked(player_position, direct_move, 2.8f);
-
-        if ((g_SpectatorStuckTimer > 0.35f || path_blocked_soon) &&
-            g_SpectatorDetourTimer <= 0.0f)
-        {
-            g_SpectatorDetourDirection = SpectatorChooseClearDirection(player_position, direct_move);
-            g_SpectatorDetourTimer = g_SpectatorStuckTimer > 0.35f ? 1.35f : 0.75f;
-        }
-
-        if (g_SpectatorDetourTimer > 0.0f &&
-            (g_SpectatorDetourDirection.x != 0.0f || g_SpectatorDetourDirection.z != 0.0f) &&
-            !SpectatorDirectionBlocked(player_position, g_SpectatorDetourDirection, 1.7f))
-        {
-            g_SpectatorMovementDirection = g_SpectatorDetourDirection;
-        }
-        else
-        {
-            g_SpectatorMovementDirection = SpectatorChooseClearDirection(player_position, direct_move);
-        }
+        g_SpectatorMovementDirection = SpectatorChooseClearDirection(player_position, direct_move);
     }
 
     float objective_dx = objective.x - player_position.x;
@@ -2125,67 +1912,6 @@ void DrawCampusBuilding(glm::vec3 center, glm::vec3 size, float yaw)
     );
 }
 
-// Prédio oco com corredor caminhável ao longo do eixo Z: duas paredes laterais,
-// telhado e, em cada extremidade, uma fachada com vão de porta central (duas
-// ombreiras + verga). Escrita para yaw == 0, como os prédios da fileira da direita.
-// A colisão correspondente fica em GetSceneObstacles() (src/scene.cpp).
-void DrawCampusCorridorBuilding(glm::vec3 center, glm::vec3 size, float yaw)
-{
-    const float kWallThickness = 1.5f;  // espessura das paredes laterais (X)
-    const float kDoorWidth     = 2.5f;  // largura do vão de porta (X)
-    const float kFacadeDepth   = 1.0f;  // espessura das fachadas/ombreiras (Z)
-    const float kDoorHeight    = 2.6f;  // altura livre da porta (Y)
-
-    const float corridor_width = size.x - 2.0f * kWallThickness; // miolo caminhável (X)
-    const float side_offset    = corridor_width * 0.5f + kWallThickness * 0.5f;
-    const float jamb_width     = (corridor_width - kDoorWidth) * 0.5f;
-    const float jamb_offset    = kDoorWidth * 0.5f + jamb_width * 0.5f;
-
-    // Paredes laterais (ao longo de todo o comprimento Z).
-    DrawCampusBox(glm::vec3(center.x - side_offset, center.y, center.z), glm::vec3(kWallThickness, size.y, size.z), yaw, OBJECT_WALL);
-    DrawCampusBox(glm::vec3(center.x + side_offset, center.y, center.z), glm::vec3(kWallThickness, size.y, size.z), yaw, OBJECT_WALL);
-
-    // Telhado, no mesmo espírito de DrawCampusBuilding.
-    DrawCampusBox(
-        glm::vec3(center.x, center.y + size.y * 0.52f, center.z),
-        glm::vec3(size.x * 1.06f, 0.22f, size.z * 1.06f),
-        yaw,
-        OBJECT_METAL_ROOF
-    );
-
-    // Fachadas com vão de porta nas duas extremidades (topo +Z e base -Z).
-    auto draw_facade = [&](float z_end, float inward)
-    {
-        float z = z_end + inward * kFacadeDepth * 0.5f;
-
-        // Ombreiras dos dois lados do vão.
-        DrawCampusBox(glm::vec3(center.x - jamb_offset, center.y, z), glm::vec3(jamb_width, size.y, kFacadeDepth), yaw, OBJECT_WALL);
-        DrawCampusBox(glm::vec3(center.x + jamb_offset, center.y, z), glm::vec3(jamb_width, size.y, kFacadeDepth), yaw, OBJECT_WALL);
-
-        // Verga acima da porta (puramente visual; a colisão ignora Y).
-        float lintel_height = (center.y + size.y * 0.5f) - kDoorHeight;
-        float lintel_center_y = kDoorHeight + lintel_height * 0.5f;
-        DrawCampusBox(glm::vec3(center.x, lintel_center_y, z), glm::vec3(kDoorWidth, lintel_height, kFacadeDepth), yaw, OBJECT_WALL);
-    };
-
-    draw_facade(center.z + size.z * 0.5f, -1.0f); // fachada do topo, recuada para dentro
-    draw_facade(center.z - size.z * 0.5f, +1.0f); // fachada da base, recuada para dentro
-
-    // Janelas decorativas na face externa de cada parede lateral.
-    DrawCampusBox(
-        glm::vec3(center.x - size.x * 0.51f, center.y + size.y * 0.22f, center.z),
-        glm::vec3(0.08f, 0.38f, size.z * 0.78f),
-        yaw,
-        OBJECT_WINDOW
-    );
-    DrawCampusBox(
-        glm::vec3(center.x + size.x * 0.51f, center.y + size.y * 0.22f, center.z),
-        glm::vec3(0.08f, 0.38f, size.z * 0.78f),
-        yaw,
-        OBJECT_WINDOW
-    );
-}
-
 void DrawCampusTree(glm::vec3 position, float scale)
 {
     DrawCampusBox(
@@ -2248,70 +1974,35 @@ void DrawCampusPine(glm::vec3 position, float scale)
     );
 }
 
-void DrawCampusCar(glm::vec3 position, float yaw, glm::vec3 body_color)
+void DrawCampusCar(glm::vec3 position, float yaw, int body_material)
 {
-    // O modelo "Car.obj" é um único shape com 8 materiais; BuildTriangles o
-    // separou em peças "Car_Cube_<Material>". Coletamos os nomes uma única vez.
-    static std::vector<std::string> car_parts;
-    if (car_parts.empty())
-    {
-        for (const auto& entry : g_VirtualScene)
-            if (entry.first.rfind("Car_Cube_", 0) == 0)
-                car_parts.push_back(entry.first);
-    }
-    if (car_parts.empty())
-        return; // Modelo do carro não foi carregado.
+    DrawCampusBox(
+        glm::vec3(position.x, position.y + 0.36f, position.z),
+        glm::vec3(2.15f, 0.72f, 4.15f),
+        yaw,
+        body_material
+    );
 
-    // O modelo nativo tem ~4.67m de comprimento e já nasce apoiado no chão (Y>=0).
-    // Escala uniforme para ~4.3m, preservando as proporções do carro.
-    const float car_scale = 0.92f;
+    DrawCampusBox(
+        glm::vec3(position.x, position.y + 0.94f, position.z - 0.25f),
+        glm::vec3(1.45f, 0.46f, 1.65f),
+        yaw,
+        OBJECT_CAR_GLASS
+    );
 
-    glm::mat4 model = Matrix_Translate(position.x, position.y, position.z)
-        * Matrix_Rotate_Y(yaw)
-        * Matrix_Scale(car_scale, car_scale, car_scale);
+    DrawCampusBox(
+        glm::vec3(position.x - 1.14f, position.y + 0.16f, position.z + 1.20f),
+        glm::vec3(0.24f, 0.32f, 0.56f),
+        yaw,
+        OBJECT_SHOTGUN
+    );
 
-    glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-    glUniform1i(g_object_id_uniform, OBJECT_CAR);
-
-    for (const std::string& part : car_parts)
-    {
-        // Cada peça usa a cor do seu material no .mtl; a carroceria ("Body")
-        // recebe a cor escolhida por carro, dando variação ao estacionamento.
-        glm::vec3 color = g_VirtualScene[part].diffuse;
-        if (part == "Car_Cube_Body")
-            color = body_color;
-
-        glUniform3f(g_material_diffuse_uniform, color.r, color.g, color.b);
-        DrawVirtualObject(part.c_str());
-    }
-}
-
-void DrawCampusBench(glm::vec3 position, float yaw)
-{
-    // Modelo "Box008" (wooden-bench) nasce em Z-up (3ds Max): comprimento ~2.94
-    // em X, altura ~1.46 em Z. Rotacionamos -90deg em X para virar Y-up e
-    // escalamos para ~1.8 m de comprimento; a base ja fica apoiada no chao (Y>=0).
-    if (g_VirtualScene.find("Box008") == g_VirtualScene.end())
-        return; // Modelo do banco nao foi carregado.
-
-    const float bench_scale = 0.60f;
-    glm::mat4 model = Matrix_Translate(position.x, position.y, position.z)
-        * Matrix_Rotate_Y(yaw)
-        * Matrix_Rotate_X(-1.57079633f)
-        * Matrix_Scale(bench_scale, bench_scale, bench_scale);
-
-    glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-    glUniform1i(g_object_id_uniform, OBJECT_BENCH);
-    DrawVirtualObject("Box008");
-}
-
-void DrawCampusBenchPair(glm::vec3 center, float yaw)
-{
-    // Dois bancos lado a lado ao longo do comprimento (eixo X local apos o yaw),
-    // formando um conjunto de ~3.6 m. O offset segue a direcao do comprimento.
-    glm::vec3 along = glm::vec3(cosf(yaw), 0.0f, -sinf(yaw)) * 0.90f;
-    DrawCampusBench(center - along, yaw);
-    DrawCampusBench(center + along, yaw);
+    DrawCampusBox(
+        glm::vec3(position.x + 1.14f, position.y + 0.16f, position.z + 1.20f),
+        glm::vec3(0.24f, 0.32f, 0.56f),
+        yaw,
+        OBJECT_SHOTGUN
+    );
 }
 
 void DrawCampusMap()
@@ -2329,135 +2020,55 @@ void DrawCampusMap()
 
     DrawCampusSurface(glm::vec3(0.0f, -0.03f, -53.0f), glm::vec3(164.0f, 1.0f, 214.0f), 0.0f, OBJECT_PLANE);
 
-    // Calcadas (OBJECT_SIDEWALK) aos pes dos edificios e nas bordas das ruas.
-    // Desenhadas ANTES das ruas e num Y menor (0.006 < 0.01) para o asfalto ficar
-    // por cima nas sobreposicoes; os predios (desenhados depois) cobrem o miolo,
-    // deixando visivel apenas a faixa de calcada ao redor de cada edificio.
-    const float kSidewalkY = 0.006f;
-    // Pe dos predios das fileiras principais (esquerda x=-12 e direita x=12).
-    for (int zi = 0; zi < 4; ++zi)
-    {
-        float bz = -18.0f - zi * 21.0f;
-        DrawCampusSurface(glm::vec3(-12.0f, kSidewalkY, bz), glm::vec3(19.6f, 1.0f, 14.6f), 0.0f, OBJECT_SIDEWALK);
-        DrawCampusSurface(glm::vec3( 12.0f, kSidewalkY, bz), glm::vec3(19.6f, 1.0f, 14.6f), 0.0f, OBJECT_SIDEWALK);
-    }
-    // Pe dos predios-corredor da direita.
-    DrawCampusSurface(glm::vec3(32.0f, kSidewalkY, -20.0f), glm::vec3(10.6f, 1.0f, 24.6f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(32.0f, kSidewalkY, -48.0f), glm::vec3(10.6f, 1.0f, 18.6f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(32.0f, kSidewalkY, -72.0f), glm::vec3(10.6f, 1.0f, 18.6f), 0.0f, OBJECT_SIDEWALK);
-    // Pe dos blocos do fundo e da frente.
-    DrawCampusSurface(glm::vec3(-14.0f, kSidewalkY, -96.0f), glm::vec3(18.6f, 1.0f, 14.6f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(  3.0f, kSidewalkY, -97.0f), glm::vec3(14.6f, 1.0f, 11.6f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(-12.0f, kSidewalkY,  -5.0f), glm::vec3(13.6f, 1.0f, 10.6f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3( 13.0f, kSidewalkY,  -5.0f), glm::vec3(13.6f, 1.0f, 10.6f), 0.0f, OBJECT_SIDEWALK);
-    // Estacionamentos (areas maiores onde ficam os carros).
-    DrawCampusSurface(glm::vec3(  0.0f, kSidewalkY,   5.0f), glm::vec3(46.0f, 1.0f,  9.0f), 0.0f, OBJECT_SIDEWALK); // praca/estac. frontal
-    DrawCampusSurface(glm::vec3(-24.0f, kSidewalkY, -22.5f), glm::vec3( 7.0f, 1.0f, 47.0f), 0.0f, OBJECT_SIDEWALK); // estac. lateral esq (vai ate a praca frontal)
-    // Praca ao redor da zona segura e do poste vermelho.
-    DrawCampusSurface(glm::vec3( 22.0f, kSidewalkY, -96.0f), glm::vec3(20.0f, 1.0f, 16.0f), 0.0f, OBJECT_SIDEWALK);
-    // Frestas estreitas entre predios muito proximos, preenchidas para nao
-    // sobrar linha fina de grama.
-    DrawCampusSurface(glm::vec3(-12.00f, kSidewalkY, -10.5f), glm::vec3(17.0f, 1.0f, 4.0f), 0.0f, OBJECT_SIDEWALK); // frente <-> fileira1 (esq)
-    DrawCampusSurface(glm::vec3( 12.00f, kSidewalkY, -10.5f), glm::vec3(17.0f, 1.0f, 4.0f), 0.0f, OBJECT_SIDEWALK); // frente <-> fileira1 (dir)
-    DrawCampusSurface(glm::vec3(-13.25f, kSidewalkY, -88.5f), glm::vec3(14.5f, 1.0f, 4.0f), 0.0f, OBJECT_SIDEWALK); // fileira4 <-> fundo (esq)
-    DrawCampusSurface(glm::vec3(  6.25f, kSidewalkY, -89.75f), glm::vec3(5.5f, 1.0f, 5.5f), 0.0f, OBJECT_SIDEWALK); // fileira4 <-> fundo (dir)
-    DrawCampusSurface(glm::vec3( -4.50f, kSidewalkY, -96.5f), glm::vec3(4.0f, 1.0f, 11.0f), 0.0f, OBJECT_SIDEWALK); // entre os dois blocos do fundo
-    // Conectores ao longo da avenida atravessando os patios (z=-27.5 e z=-69.5),
-    // ligando a calcada de uma fileira a outra para a rede ficar continua.
-    DrawCampusSurface(glm::vec3(-3.4f, kSidewalkY, -28.5f), glm::vec3(1.2f, 1.0f, 7.0f), 0.0f, OBJECT_SIDEWALK); // patio 1 (oeste)
-    DrawCampusSurface(glm::vec3( 3.4f, kSidewalkY, -28.5f), glm::vec3(1.2f, 1.0f, 7.0f), 0.0f, OBJECT_SIDEWALK); // patio 1 (leste)
-    DrawCampusSurface(glm::vec3(-3.4f, kSidewalkY, -70.5f), glm::vec3(1.2f, 1.0f, 7.0f), 0.0f, OBJECT_SIDEWALK); // patio 2 (oeste)
-    DrawCampusSurface(glm::vec3( 3.4f, kSidewalkY, -70.5f), glm::vec3(1.2f, 1.0f, 7.0f), 0.0f, OBJECT_SIDEWALK); // patio 2 (leste)
+    // Roads and paved circulation, based on the top-view campus plan.
+    DrawCampusSurface(glm::vec3(-31.0f, 0.01f, -45.0f), glm::vec3(6.0f, 1.0f, 118.0f), 0.0f, OBJECT_ROAD);
+    DrawCampusSurface(glm::vec3(0.0f, 0.01f, -48.0f), glm::vec3(5.6f, 1.0f, 104.0f), 0.0f, OBJECT_ROAD);
+    DrawCampusSurface(glm::vec3(25.0f, 0.01f, -49.0f), glm::vec3(4.6f, 1.0f, 102.0f), 0.0f, OBJECT_ROAD);
+    DrawCampusSurface(glm::vec3(-2.5f, 0.012f, -8.0f), glm::vec3(52.0f, 1.0f, 4.6f), 0.0f, OBJECT_ROAD);
+    DrawCampusSurface(glm::vec3(-2.5f, 0.012f, -92.0f), glm::vec3(52.0f, 1.0f, 4.6f), 0.0f, OBJECT_ROAD);
+    DrawCampusSurface(glm::vec3(-11.0f, 0.012f, -29.0f), glm::vec3(29.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(12.5f, 0.012f, -29.0f), glm::vec3(21.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(-11.0f, 0.012f, -50.0f), glm::vec3(29.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(12.5f, 0.012f, -50.0f), glm::vec3(21.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(-11.0f, 0.012f, -71.0f), glm::vec3(29.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusSurface(glm::vec3(12.5f, 0.012f, -71.0f), glm::vec3(21.0f, 1.0f, 3.2f), 0.0f, OBJECT_SIDEWALK);
 
-    // Anel viario externo: duas faixas verticais nas laterais (x=-31 e x=25) e
-    // duas horizontais (topo z=14, base z=-108) ligando-as, fechando a "cidade"
-    // dentro de um perimetro de ruas. As duas verticais externas compartilham o
-    // mesmo alcance em Z (14 .. -108) para os cantos se encontrarem. A base foi
-    // afastada para z=-108 para dar espacamento aos predios do fundo.
-    //
-    // Prioridade nas intersecoes: as ruas VERTICAIS ficam num Y maior (0.012) e as
-    // HORIZONTAIS num Y menor (0.010). Assim, onde elas se cruzam, a vertical fica
-    // por cima (suas linhas tem prioridade) e nao ha z-fighting entre as texturas.
-    DrawCampusSurface(glm::vec3(-31.0f, 0.012f, -47.0f), glm::vec3(6.0f, 1.0f, 122.0f), 0.0f, OBJECT_ROAD); // vertical esq
-    DrawCampusSurface(glm::vec3(25.0f, 0.012f, -47.0f), glm::vec3(4.6f, 1.0f, 122.0f), 0.0f, OBJECT_ROAD);  // vertical dir
-    DrawCampusSurface(glm::vec3(-3.0f, 0.010f, 14.0f), glm::vec3(62.0f, 1.0f, 6.0f), 0.0f, OBJECT_ROAD);    // horizontal topo
-    DrawCampusSurface(glm::vec3(-3.0f, 0.010f, -108.0f), glm::vec3(62.0f, 1.0f, 6.0f), 0.0f, OBJECT_ROAD);  // horizontal base
-    // Avenida central interna (eixo Z, VERTICAL => Y maior): encosta no anel de
-    // topo (z=14) e termina em z=-90, antes do predio dos fundos (~z=-92.5).
-    DrawCampusSurface(glm::vec3(0.0f, 0.012f, -38.0f), glm::vec3(5.6f, 1.0f, 104.0f), 0.0f, OBJECT_ROAD);
-    // Rua transversal interna (HORIZONTAL => Y menor) ligando as duas verticais de
-    // ponta a ponta, centralizada no vao entre as fileiras z=-39 (face -45) e
-    // z=-60 (face -54), ou seja z=-49.5, deixando 1.5 m de folga para cada fileira.
-    DrawCampusSurface(glm::vec3(-3.0f, 0.010f, -49.5f), glm::vec3(62.0f, 1.0f, 6.0f), 0.0f, OBJECT_ROAD);
+    // Parking lots.
+    DrawCampusSurface(glm::vec3(-21.2f, 0.014f, -25.6f), glm::vec3(14.5f, 1.0f, 42.0f), 0.0f, OBJECT_CONCRETE);
+    DrawCampusSurface(glm::vec3(-3.8f, 0.014f, -2.0f), glm::vec3(38.0f, 1.0f, 12.0f), 0.0f, OBJECT_CONCRETE);
+    DrawCampusSurface(glm::vec3(22.0f, 0.014f, -88.0f), glm::vec3(34.0f, 1.0f, 10.0f), 0.0f, OBJECT_CONCRETE);
 
-    // Long classroom/warehouse rows. Fileira esquerda em x=-12 (simetrica a x=12
-    // do outro lado da avenida central, com a mesma folga ate o asfalto).
-    DrawCampusBuilding(glm::vec3(-12.0f, 3.20f, -18.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
+    // Long classroom/warehouse rows.
+    DrawCampusBuilding(glm::vec3(-11.0f, 3.20f, -18.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(12.0f, 3.20f, -18.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
-    DrawCampusBuilding(glm::vec3(-12.0f, 3.20f, -39.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
+    DrawCampusBuilding(glm::vec3(-11.0f, 3.20f, -39.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(12.0f, 3.20f, -39.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
-    DrawCampusBuilding(glm::vec3(-12.0f, 3.20f, -60.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
+    DrawCampusBuilding(glm::vec3(-11.0f, 3.20f, -60.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(12.0f, 3.20f, -60.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
-    DrawCampusBuilding(glm::vec3(-12.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
+    DrawCampusBuilding(glm::vec3(-11.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(12.0f, 3.20f, -81.0f), glm::vec3(17.0f, 6.4f, 12.0f), 0.0f);
 
     // Right-side service row and front/admin blocks.
-    // Os 3 prédios compridos da direita são ocos, com corredor caminhável ao longo de Z.
-    DrawCampusCorridorBuilding(glm::vec3(32.0f, 3.00f, -20.0f), glm::vec3(8.0f, 6.0f, 22.0f), 0.0f);
-    DrawCampusCorridorBuilding(glm::vec3(32.0f, 3.00f, -48.0f), glm::vec3(8.0f, 6.0f, 16.0f), 0.0f);
-    DrawCampusCorridorBuilding(glm::vec3(32.0f, 3.00f, -72.0f), glm::vec3(8.0f, 6.0f, 16.0f), 0.0f);
-
-    // Piso interno do corredor de cada um dos 3 prédios exploraveis.
-    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -20.0f), glm::vec3(5.0f, 1.0f, 22.0f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -48.0f), glm::vec3(5.0f, 1.0f, 16.0f), 0.0f, OBJECT_SIDEWALK);
-    DrawCampusSurface(glm::vec3(32.0f, 0.02f, -72.0f), glm::vec3(5.0f, 1.0f, 16.0f), 0.0f, OBJECT_SIDEWALK);
+    DrawCampusBuilding(glm::vec3(32.0f, 3.00f, -20.0f), glm::vec3(8.0f, 6.0f, 22.0f), 0.0f);
+    DrawCampusBuilding(glm::vec3(32.0f, 3.00f, -48.0f), glm::vec3(8.0f, 6.0f, 16.0f), 0.0f);
+    DrawCampusBuilding(glm::vec3(32.0f, 3.00f, -72.0f), glm::vec3(8.0f, 6.0f, 16.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(-14.0f, 3.20f, -96.0f), glm::vec3(16.0f, 6.4f, 12.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(3.0f, 3.20f, -97.0f), glm::vec3(12.0f, 6.4f, 9.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(-12.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f), 0.0f);
     DrawCampusBuilding(glm::vec3(13.0f, 3.40f, -5.0f), glm::vec3(11.0f, 6.8f, 8.0f), 0.0f);
 
-    // Carros estacionados espalhados pelas areas de concreto. As colisoes
-    // correspondentes estao em GetSceneObstacles() (scene.cpp).
-    static const glm::vec3 kCarColors[5] = {
-        glm::vec3(0.62f, 0.07f, 0.06f), // vermelho
-        glm::vec3(0.09f, 0.18f, 0.50f), // azul
-        glm::vec3(0.82f, 0.83f, 0.86f), // prata
-        glm::vec3(0.05f, 0.05f, 0.06f), // preto
-        glm::vec3(0.13f, 0.42f, 0.28f), // verde
-    };
-    const float kHalfPi = 1.57079633f;
-    // Estacionamento lateral esquerdo (perpendiculares, comprimento em X).
+    // Parking cars.
     for (int i = 0; i < 5; ++i)
-        DrawCampusCar(glm::vec3(-24.0f, 0.0f, -14.0f - i * 6.0f), kHalfPi, kCarColors[i % 5]);
-    // Praca/estacionamento frontal (voltados para o sul, comprimento em Z).
     {
-        const float xs[6] = { -20.0f, -13.0f, -7.0f, 7.0f, 13.0f, 20.0f };
-        for (int i = 0; i < 6; ++i)
-            DrawCampusCar(glm::vec3(xs[i], 0.0f, 5.5f), 0.0f, kCarColors[i % 5]);
+        DrawCampusCar(glm::vec3(-25.6f, 0.0f, -8.0f - i * 8.8f), 0.0f, OBJECT_CAR_BODY);
+        DrawCampusCar(glm::vec3(-16.8f, 0.0f, -8.0f - i * 8.8f), 0.0f, OBJECT_CONCRETE);
     }
-    // Praca da zona segura.
-    DrawCampusCar(glm::vec3(14.0f, 0.0f, -91.0f), kHalfPi, kCarColors[1]);
-    DrawCampusCar(glm::vec3(19.0f, 0.0f, -91.0f), kHalfPi, kCarColors[3]);
-    // Carros adicionais espalhados em pontos de interesse.
-    DrawCampusCar(glm::vec3(-24.0f, 0.0f,   -2.0f), kHalfPi, kCarColors[2]); // estac. esq, ponta norte
-    DrawCampusCar(glm::vec3(-24.0f, 0.0f,  -44.0f), kHalfPi, kCarColors[0]); // estac. esq, ponta sul
-    DrawCampusCar(glm::vec3( 16.0f, 0.0f, -100.5f), 0.0f,    kCarColors[4]); // praca da zona segura (sul)
-    DrawCampusCar(glm::vec3( 28.0f, 0.0f,  -90.0f), kHalfPi, kCarColors[2]); // praca da zona segura (leste)
 
-    // Bancos de madeira em pares (dois lado a lado), encostados nas paredes com o
-    // ENCOSTO voltado para a parede do edificio. yaw define o sentido das costas:
-    // 0 => -Z; PI => +Z; +PI/2 => -X; -PI/2 => +X. Cada par e centrado na posicao.
-    const float kBPi  = 3.1415927f;
-    const float kBPi2 = 1.5707963f;
-    DrawCampusBenchPair(glm::vec3( -6.05f, 0.0f,   -5.05f),  kBPi2); // bloco frente-esq (costas -X)
-    DrawCampusBenchPair(glm::vec3(  7.05f, 0.0f,   -5.05f), -kBPi2); // bloco frente-dir, lado avenida (costas +X)
-    DrawCampusBenchPair(glm::vec3( 18.95f, 0.0f,   -4.82f),  kBPi2); // bloco frente-dir, face leste (costas -X)
-    DrawCampusBenchPair(glm::vec3( -7.28f, 0.0f,  -32.55f),  0.0f);  // fileira 2 (costas -Z)
-    DrawCampusBenchPair(glm::vec3(-15.67f, 0.0f,  -32.55f),  0.0f);  // fileira 2 (costas -Z)
-    DrawCampusBenchPair(glm::vec3( -7.28f, 0.0f,  -74.55f),  0.0f);  // fileira 4 (costas -Z)
-    DrawCampusBenchPair(glm::vec3(-15.67f, 0.0f,  -74.55f),  0.0f);  // fileira 4 (costas -Z)
-    DrawCampusBenchPair(glm::vec3(  3.70f, 0.0f, -101.95f),  kBPi);  // bloco fundo (3) (costas +Z)
-    DrawCampusBenchPair(glm::vec3(-13.58f, 0.0f, -102.45f),  kBPi);  // bloco fundo (-14) (costas +Z)
+    for (int i = 0; i < 4; ++i)
+    {
+        DrawCampusCar(glm::vec3(-18.0f + i * 9.5f, 0.0f, 2.0f), 3.141592f / 2.0f, (i % 2 == 0) ? OBJECT_CAR_BODY : OBJECT_CONCRETE);
+        DrawCampusCar(glm::vec3(8.0f + i * 9.2f, 0.0f, -88.0f), 3.141592f / 2.0f, (i % 2 == 0) ? OBJECT_CONCRETE : OBJECT_CAR_BODY);
+    }
 
     // Tree belts and courtyard trees.
     for (int i = 0; i < 16; ++i)
@@ -2468,23 +2079,10 @@ void DrawCampusMap()
 
     for (int i = 0; i < 12; i += 2)
     {
-        // Pula a árvore que cairia sobre a avenida central (x em [-2.8, 2.8]).
-        float xl = -18.0f + i * 3.8f;
-        if (fabs(xl) > 3.3f)
-        {
-            DrawCampusTree(glm::vec3(xl, 0.0f, -27.5f), 0.90f);
-            DrawCampusTree(glm::vec3(xl, 0.0f, -69.5f), 0.90f);
-        }
-
-        // Pula as árvores da fileira da direita que cairiam dentro dos
-        // prédios-corredor (footprint x:[28,36]) ou sobre a rua vertical
-        // direita (footprint x:[22.7, 27.3]).
-        float xr = 5.0f + i * 3.3f;
-        if (xr < 22.0f || xr > 37.0f)
-        {
-            DrawCampusTree(glm::vec3(xr, 0.0f, -27.5f), 0.82f);
-            DrawCampusTree(glm::vec3(xr, 0.0f, -69.5f), 0.82f);
-        }
+        DrawCampusTree(glm::vec3(-18.0f + i * 3.8f, 0.0f, -27.5f), 0.90f);
+        DrawCampusTree(glm::vec3(5.0f + i * 3.3f, 0.0f, -27.5f), 0.82f);
+        DrawCampusTree(glm::vec3(-18.0f + i * 3.8f, 0.0f, -69.5f), 0.90f);
+        DrawCampusTree(glm::vec3(5.0f + i * 3.3f, 0.0f, -69.5f), 0.82f);
     }
 
     // Outer forest: trees after the campus blocks, before the enclosing walls.
@@ -2532,11 +2130,6 @@ void DrawCampusMap()
     DrawCampusBox(glm::vec3(84.0f, 2.8f, -53.0f), glm::vec3(2.0f, 6.4f, 218.0f), 0.0f, OBJECT_SHOTGUN);
     DrawCampusBox(glm::vec3(0.0f, 2.8f, 56.0f), glm::vec3(168.0f, 6.4f, 2.0f), 0.0f, OBJECT_SHOTGUN);
     DrawCampusBox(glm::vec3(0.0f, 2.8f, -162.0f), glm::vec3(168.0f, 6.4f, 2.0f), 0.0f, OBJECT_SHOTGUN);
-
-    // Postes de luz: emitem a iluminação do cenário inteiro.
-    const std::vector<LightPost>& light_posts = GetSceneLightPosts();
-    for (const LightPost& post : light_posts)
-        DrawLightPost(post);
 }
 
 void DrawSafeZoneBeacon(const SafeZone& safe_zone, float time_seconds)
@@ -2595,138 +2188,6 @@ void DrawSafeZoneBeacon(const SafeZone& safe_zone, float time_seconds)
         0.0f,
         OBJECT_SAFE_ZONE
     );
-}
-
-void DrawLightPost(const LightPost& post)
-{
-    // Coluna fina vertical.
-    glm::vec3 bulb_pos = post.base + post.bulb_offset;
-    float pole_height = post.bulb_offset.y;
-
-    DrawCampusBox(
-        glm::vec3(post.base.x, pole_height * 0.5f, post.base.z),
-        glm::vec3(0.22f, pole_height, 0.22f),
-        0.0f,
-        OBJECT_METAL_ROOF);
-
-    // Braço horizontal curto até a lâmpada.
-    DrawCampusBox(
-        glm::vec3(post.base.x, bulb_pos.y - 0.10f, post.base.z),
-        glm::vec3(0.55f, 0.18f, 0.55f),
-        0.0f,
-        OBJECT_METAL_ROOF);
-
-    // Lâmpada: cubo emissivo (OBJECT_LAMP_LIGHT já é tratado como
-    // cor pura no fragment shader, sem ser afetado pela iluminação).
-    DrawCampusBox(
-        glm::vec3(bulb_pos.x, bulb_pos.y - 0.30f, bulb_pos.z),
-        glm::vec3(0.45f, 0.40f, 0.45f),
-        0.0f,
-        OBJECT_LAMP_LIGHT);
-}
-
-void UpdateLightingUniforms(glm::vec3 viewer_position)
-{
-    // Seleciona os MAX_LIGHTS_CPU postes mais próximos do observador
-    // e os MAX_OCCLUDERS_CPU obstáculos mais próximos como oclusores.
-    const std::vector<LightPost>& posts = GetSceneLightPosts();
-    const std::vector<BoxObstacle>& obstacles = GetSceneObstacles();
-
-    struct IndexedDist { float d2; int idx; };
-    std::vector<IndexedDist> ranked_lights;
-    ranked_lights.reserve(posts.size());
-
-    for (int i = 0; i < (int)posts.size(); ++i)
-    {
-        glm::vec3 bulb = posts[i].base + posts[i].bulb_offset;
-        glm::vec3 diff = bulb - viewer_position;
-        ranked_lights.push_back({ diff.x*diff.x + diff.y*diff.y + diff.z*diff.z, i });
-    }
-
-    int light_count = std::min((int)ranked_lights.size(), MAX_LIGHTS_CPU);
-    std::partial_sort(ranked_lights.begin(),
-                      ranked_lights.begin() + light_count,
-                      ranked_lights.end(),
-                      [](const IndexedDist& a, const IndexedDist& b){ return a.d2 < b.d2; });
-
-    float light_pos[MAX_LIGHTS_CPU * 3] = {0};
-    float light_color[MAX_LIGHTS_CPU * 3] = {0};
-    float light_intensity[MAX_LIGHTS_CPU] = {0};
-    float light_range[MAX_LIGHTS_CPU] = {0};
-
-    for (int k = 0; k < light_count; ++k)
-    {
-        const LightPost& p = posts[ranked_lights[k].idx];
-        glm::vec3 bulb = p.base + p.bulb_offset;
-        light_pos[k*3+0] = bulb.x;
-        light_pos[k*3+1] = bulb.y;
-        light_pos[k*3+2] = bulb.z;
-        light_color[k*3+0] = p.color.r;
-        light_color[k*3+1] = p.color.g;
-        light_color[k*3+2] = p.color.b;
-        light_intensity[k] = p.intensity;
-        light_range[k] = p.range;
-    }
-
-    glUniform1i(g_num_lights_uniform, light_count);
-    glUniform3fv(g_light_pos_uniform, MAX_LIGHTS_CPU, light_pos);
-    glUniform3fv(g_light_color_uniform, MAX_LIGHTS_CPU, light_color);
-    glUniform1fv(g_light_intensity_uniform, MAX_LIGHTS_CPU, light_intensity);
-    glUniform1fv(g_light_range_uniform, MAX_LIGHTS_CPU, light_range);
-
-    // Oclusores: obstáculos do cenário + oclusores exclusivos de iluminação
-    // (tetos dos prédios-corredor). Filtra muros externos enormes (que
-    // prejudicariam o teste de sombra perto da câmera) e ranqueia por proximidade.
-    const std::vector<BoxObstacle>& light_occluders = GetSceneLightOccluders();
-
-    struct RankedOcc { float d2; const BoxObstacle* box; };
-    std::vector<RankedOcc> ranked_occ;
-    ranked_occ.reserve(obstacles.size() + light_occluders.size());
-
-    auto consider_occluder = [&](const BoxObstacle& o)
-    {
-        // Pular muros externos do mapa: dimensão > 100 em algum eixo horizontal.
-        if (o.size.x > 100.0f || o.size.z > 100.0f)
-            return;
-
-        glm::vec3 diff = o.center - viewer_position;
-        ranked_occ.push_back({ diff.x*diff.x + diff.z*diff.z, &o });
-    };
-
-    for (const BoxObstacle& o : obstacles)
-        consider_occluder(o);
-    for (const BoxObstacle& o : light_occluders)
-        consider_occluder(o);
-
-    int occ_count = std::min((int)ranked_occ.size(), MAX_OCCLUDERS_CPU);
-    std::partial_sort(ranked_occ.begin(),
-                      ranked_occ.begin() + occ_count,
-                      ranked_occ.end(),
-                      [](const RankedOcc& a, const RankedOcc& b){ return a.d2 < b.d2; });
-
-    float occ_min[MAX_OCCLUDERS_CPU * 3] = {0};
-    float occ_max[MAX_OCCLUDERS_CPU * 3] = {0};
-
-    for (int k = 0; k < occ_count; ++k)
-    {
-        const BoxObstacle& o = *ranked_occ[k].box;
-        glm::vec3 half = o.size * 0.5f;
-        glm::vec3 lo = o.center - half;
-        glm::vec3 hi = o.center + half;
-        occ_min[k*3+0] = lo.x; occ_min[k*3+1] = lo.y; occ_min[k*3+2] = lo.z;
-        occ_max[k*3+0] = hi.x; occ_max[k*3+1] = hi.y; occ_max[k*3+2] = hi.z;
-    }
-
-    glUniform1i(g_num_occluders_uniform, occ_count);
-    glUniform3fv(g_occluder_min_uniform, MAX_OCCLUDERS_CPU, occ_min);
-    glUniform3fv(g_occluder_max_uniform, MAX_OCCLUDERS_CPU, occ_max);
-
-#if DAY_MODE_DEBUG_ENABLED
-    // Modo dia (debug): liga o sol direcional e a iluminação ambiente diurna
-    // dentro do fragment shader. Reaproveita os mesmos oclusores AABB para as
-    // sombras projetadas pelo sol.
-    glUniform1i(g_day_mode_uniform, g_DayMode ? 1 : 0);
-#endif
 }
 
 // =============================================================
@@ -2867,7 +2328,6 @@ int main(int argc, char* argv[])
 LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImage0
    LoadTextureImage("../../data/textures/textura_grama.png");         // TextureImage1
    LoadTextureImage("../../data/textures/monster-zero-ultra/MonsterUltra_em.png"); // TextureImage2
-   LoadTextureImage("../../data/textures/rocky_terrain_02_diff_1k.jpg"); // TextureImage3
     
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
@@ -2890,17 +2350,6 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
     ObjModel monsterdrinkmodel("../../data/models/monster-zero-ultra/MonsterSubs.obj", "../../data/models/monster-zero-ultra/");
     ComputeNormals(&monsterdrinkmodel);
     BuildTrianglesAndAddToVirtualScene(&monsterdrinkmodel);
-
-    // Carro do estacionamento: shape único "Car_Cube" com 8 materiais (.mtl),
-    // separado em peças "Car_Cube_<Material>" por BuildTrianglesAndAddToVirtualScene.
-    ObjModel carmodel("../../data/models/car/Car.obj", "../../data/models/car/");
-    ComputeNormals(&carmodel);
-    BuildTrianglesAndAddToVirtualScene(&carmodel);
-
-    // Banco de madeira: shape unico "Box008" (Z-up, rotacionado em DrawCampusBench).
-    ObjModel benchmodel("../../data/models/wooden-bench/16452_WoodenBench_NEW.obj", "../../data/models/wooden-bench/");
-    ComputeNormals(&benchmodel);
-    BuildTrianglesAndAddToVirtualScene(&benchmodel);
 
     if ( argc > 1 )
     {
@@ -2969,9 +2418,6 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
                 g_SpectatorHasLastPosition = false;
                 g_SpectatorStuckTimer = 0.0f;
                 g_SpectatorDetourTimer = 0.0f;
-                g_SpectatorTransitMode = 0;
-                g_SpectatorTransitPortal = -1;
-                g_SpectatorTransitDoor = -1;
                 g_SpectatorAutoAdvanceTimer = -1.0f;
                 g_SpectatorAutoRetryTimer = -1.0f;
             }
@@ -2996,9 +2442,6 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
                 g_SpectatorHasLastPosition = false;
                 g_SpectatorStuckTimer = 0.0f;
                 g_SpectatorDetourTimer = 0.0f;
-                g_SpectatorTransitMode = 0;
-                g_SpectatorTransitPortal = -1;
-                g_SpectatorTransitDoor = -1;
                 g_SpectatorAutoAdvanceTimer = -1.0f;
                 g_SpectatorAutoRetryTimer = -1.0f;
             }
@@ -3067,9 +2510,6 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         if (g_GameState.status == GameStatus::Playing
 #if MAP_VIEW_ENABLED
             && !g_MapView.IsActive()
-#endif
-#if BIGFOOT_FREEZE_DEBUG_ENABLED
-            && !g_BigfootFrozen
 #endif
            )
         {
@@ -3172,12 +2612,7 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         // Conversaremos sobre sistemas de cores nas aulas de Modelos de Iluminação.
         //
         //           R     G     B     A
-#if DAY_MODE_DEBUG_ENABLED
-        if (g_DayMode)
-            glClearColor(0.53f, 0.75f, 0.92f, 1.0f); // céu de dia, azul claro
-        else
-#endif
-            glClearColor(0.015f, 0.018f, 0.026f, 1.0f);
+        glClearColor(0.015f, 0.018f, 0.026f, 1.0f);
 
         // "Pintamos" todos os pixels do framebuffer com a cor definida acima,
         // e também resetamos todos os pixels do Z-buffer (depth buffer).
@@ -3277,11 +2712,6 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         #define PLANE  2
         #define SAFE_ZONE 3
         #define BIGFOOT 4
-
-        // Atualiza os uniforms de iluminação por postes de luz a cada frame,
-        // selecionando as luzes/oclusores mais próximos do player.
-        UpdateLightingUniforms(glm::vec3(camera_position_c.x, camera_position_c.y, camera_position_c.z));
-
         DrawCampusMap();
 
 
@@ -3413,20 +2843,6 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         // Imprimimos na tela informação sobre o número de quadros renderizados
         // por segundo (frames per second).
         TextRendering_ShowFramesPerSecond(window);
-
-#if SHOW_COORDS_DEBUG_ENABLED
-        if (g_ShowCoordsDebug)
-        {
-            glm::vec4 dbg_pos = g_Camera.GetPosition();
-            char coords_buf[64];
-            int coords_chars = snprintf(coords_buf, sizeof(coords_buf),
-                "X=%.2f Y=%.2f Z=%.2f", dbg_pos.x, dbg_pos.y, dbg_pos.z);
-            float lh = TextRendering_LineHeight(window);
-            float cw = TextRendering_CharWidth(window);
-            TextRendering_PrintString(window, coords_buf,
-                1.0f - (coords_chars + 1) * cw, 1.0f - 2.0f * lh, 1.0f);
-        }
-#endif
 
         if (g_GameState.status == GameStatus::MainMenu)
         {
@@ -3865,23 +3281,10 @@ void LoadShadersFromFiles()
     g_view_uniform       = glGetUniformLocation(g_GpuProgramID, "view"); // Variável da matriz "view" em shader_vertex.glsl
     g_projection_uniform = glGetUniformLocation(g_GpuProgramID, "projection"); // Variável da matriz "projection" em shader_vertex.glsl
     g_object_id_uniform  = glGetUniformLocation(g_GpuProgramID, "object_id"); // Variável "object_id" em shader_fragment.glsl
-    g_material_diffuse_uniform = glGetUniformLocation(g_GpuProgramID, "u_material_diffuse");
     g_bbox_min_uniform   = glGetUniformLocation(g_GpuProgramID, "bbox_min");
     g_bbox_max_uniform   = glGetUniformLocation(g_GpuProgramID, "bbox_max");
 #if MAP_VIEW_ENABLED
     g_map_view_uniform   = glGetUniformLocation(g_GpuProgramID, "u_map_view_active");
-#endif
-
-    g_num_lights_uniform      = glGetUniformLocation(g_GpuProgramID, "u_num_lights");
-    g_light_pos_uniform       = glGetUniformLocation(g_GpuProgramID, "u_light_pos");
-    g_light_color_uniform     = glGetUniformLocation(g_GpuProgramID, "u_light_color");
-    g_light_intensity_uniform = glGetUniformLocation(g_GpuProgramID, "u_light_intensity");
-    g_light_range_uniform     = glGetUniformLocation(g_GpuProgramID, "u_light_range");
-    g_num_occluders_uniform   = glGetUniformLocation(g_GpuProgramID, "u_num_occluders");
-    g_occluder_min_uniform    = glGetUniformLocation(g_GpuProgramID, "u_occluder_min");
-    g_occluder_max_uniform    = glGetUniformLocation(g_GpuProgramID, "u_occluder_max");
-#if DAY_MODE_DEBUG_ENABLED
-    g_day_mode_uniform        = glGetUniformLocation(g_GpuProgramID, "u_day_mode");
 #endif
 
     // Variáveis em "shader_fragment.glsl" para acesso das imagens de textura
@@ -3889,7 +3292,6 @@ void LoadShadersFromFiles()
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage0"), 0);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage1"), 1);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage2"), 2);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage3"), 3);
     glUseProgram(0);
 }
 
@@ -4043,140 +3445,81 @@ void BuildTrianglesAndAddToVirtualScene(ObjModel* model)
     std::vector<float>  normal_coefficients;
     std::vector<float>  texture_coefficients;
 
-    const float minval = std::numeric_limits<float>::min();
-    const float maxval = std::numeric_limits<float>::max();
-
-    // Cor difusa (Kd) de um material do .mtl; cinza neutro quando não há material.
-    auto material_diffuse = [&](int m) -> glm::vec3
-    {
-        if (m >= 0 && m < (int)model->materials.size())
-            return glm::vec3(model->materials[m].diffuse[0],
-                             model->materials[m].diffuse[1],
-                             model->materials[m].diffuse[2]);
-        return glm::vec3(0.8f, 0.8f, 0.8f);
-    };
-    auto material_name = [&](int m) -> std::string
-    {
-        if (m >= 0 && m < (int)model->materials.size())
-            return model->materials[m].name;
-        return std::string("default");
-    };
-
     for (size_t shape = 0; shape < model->shapes.size(); ++shape)
     {
-        const tinyobj::mesh_t& mesh = model->shapes[shape].mesh;
-        size_t num_triangles = mesh.num_face_vertices.size();
-        bool has_materials = mesh.material_ids.size() == num_triangles;
+        size_t first_index = indices.size();
+        size_t num_triangles = model->shapes[shape].mesh.num_face_vertices.size();
 
-        auto tri_material = [&](size_t t) -> int
-        {
-            return has_materials ? mesh.material_ids[t] : -1;
-        };
+        const float minval = std::numeric_limits<float>::min();
+        const float maxval = std::numeric_limits<float>::max();
 
-        // Ordem de aparição dos materiais usados por este shape.
-        std::vector<int> material_order;
-        for (size_t t = 0; t < num_triangles; ++t)
-        {
-            int m = tri_material(t);
-            if (std::find(material_order.begin(), material_order.end(), m) == material_order.end())
-                material_order.push_back(m);
-        }
-        if (material_order.empty())
-            material_order.push_back(-1);
+        glm::vec3 bbox_min = glm::vec3(maxval,maxval,maxval);
+        glm::vec3 bbox_max = glm::vec3(minval,minval,minval);
 
-        // Emite os 3 vértices de um triângulo, atualizando buffers e bbox.
-        auto emit_triangle = [&](size_t triangle, glm::vec3& bmin, glm::vec3& bmax)
+        for (size_t triangle = 0; triangle < num_triangles; ++triangle)
         {
-            assert(mesh.num_face_vertices[triangle] == 3);
+            assert(model->shapes[shape].mesh.num_face_vertices[triangle] == 3);
+
             for (size_t vertex = 0; vertex < 3; ++vertex)
             {
-                tinyobj::index_t idx = mesh.indices[3*triangle + vertex];
+                tinyobj::index_t idx = model->shapes[shape].mesh.indices[3*triangle + vertex];
 
-                indices.push_back((GLuint)(model_coefficients.size() / 4));
+                indices.push_back(first_index + 3*triangle + vertex);
 
                 const float vx = model->attrib.vertices[3*idx.vertex_index + 0];
                 const float vy = model->attrib.vertices[3*idx.vertex_index + 1];
                 const float vz = model->attrib.vertices[3*idx.vertex_index + 2];
+                //printf("tri %d vert %d = (%.2f, %.2f, %.2f)\n", (int)triangle, (int)vertex, vx, vy, vz);
                 model_coefficients.push_back( vx ); // X
                 model_coefficients.push_back( vy ); // Y
                 model_coefficients.push_back( vz ); // Z
                 model_coefficients.push_back( 1.0f ); // W
 
-                bmin.x = std::min(bmin.x, vx); bmax.x = std::max(bmax.x, vx);
-                bmin.y = std::min(bmin.y, vy); bmax.y = std::max(bmax.y, vy);
-                bmin.z = std::min(bmin.z, vz); bmax.z = std::max(bmax.z, vz);
+                bbox_min.x = std::min(bbox_min.x, vx);
+                bbox_min.y = std::min(bbox_min.y, vy);
+                bbox_min.z = std::min(bbox_min.z, vz);
+                bbox_max.x = std::max(bbox_max.x, vx);
+                bbox_max.y = std::max(bbox_max.y, vy);
+                bbox_max.z = std::max(bbox_max.z, vz);
 
-                // A tinyobjloader retorna índice -1 quando não há normal/textura.
+                // Inspecionando o código da tinyobjloader, o aluno Bernardo
+                // Sulzbach (2017/1) apontou que a maneira correta de testar se
+                // existem normais e coordenadas de textura no ObjModel é
+                // comparando se o índice retornado é -1. Fazemos isso abaixo.
+
                 if ( idx.normal_index != -1 )
                 {
-                    normal_coefficients.push_back( model->attrib.normals[3*idx.normal_index + 0] );
-                    normal_coefficients.push_back( model->attrib.normals[3*idx.normal_index + 1] );
-                    normal_coefficients.push_back( model->attrib.normals[3*idx.normal_index + 2] );
-                    normal_coefficients.push_back( 0.0f );
+                    const float nx = model->attrib.normals[3*idx.normal_index + 0];
+                    const float ny = model->attrib.normals[3*idx.normal_index + 1];
+                    const float nz = model->attrib.normals[3*idx.normal_index + 2];
+                    normal_coefficients.push_back( nx ); // X
+                    normal_coefficients.push_back( ny ); // Y
+                    normal_coefficients.push_back( nz ); // Z
+                    normal_coefficients.push_back( 0.0f ); // W
                 }
 
                 if ( idx.texcoord_index != -1 )
                 {
-                    texture_coefficients.push_back( model->attrib.texcoords[2*idx.texcoord_index + 0] );
-                    texture_coefficients.push_back( model->attrib.texcoords[2*idx.texcoord_index + 1] );
+                    const float u = model->attrib.texcoords[2*idx.texcoord_index + 0];
+                    const float v = model->attrib.texcoords[2*idx.texcoord_index + 1];
+                    texture_coefficients.push_back( u );
+                    texture_coefficients.push_back( v );
                 }
-            }
-        };
-
-        size_t shape_first_index = indices.size();
-        glm::vec3 shape_bbox_min = glm::vec3(maxval,maxval,maxval);
-        glm::vec3 shape_bbox_max = glm::vec3(minval,minval,minval);
-
-        // Para cada material usado, emitimos suas faces num intervalo contíguo e
-        // (quando há mais de um material) registramos um sub-objeto próprio, com a
-        // cor do .mtl. Assim um único shape multi-material (ex.: o carro) pode ser
-        // desenhado peça a peça com cores diferentes.
-        for (int m : material_order)
-        {
-            size_t group_first_index = indices.size();
-            glm::vec3 group_bbox_min = glm::vec3(maxval,maxval,maxval);
-            glm::vec3 group_bbox_max = glm::vec3(minval,minval,minval);
-
-            for (size_t t = 0; t < num_triangles; ++t)
-            {
-                if (tri_material(t) != m)
-                    continue;
-                emit_triangle(t, group_bbox_min, group_bbox_max);
-            }
-
-            shape_bbox_min.x = std::min(shape_bbox_min.x, group_bbox_min.x);
-            shape_bbox_min.y = std::min(shape_bbox_min.y, group_bbox_min.y);
-            shape_bbox_min.z = std::min(shape_bbox_min.z, group_bbox_min.z);
-            shape_bbox_max.x = std::max(shape_bbox_max.x, group_bbox_max.x);
-            shape_bbox_max.y = std::max(shape_bbox_max.y, group_bbox_max.y);
-            shape_bbox_max.z = std::max(shape_bbox_max.z, group_bbox_max.z);
-
-            if (material_order.size() > 1)
-            {
-                SceneObject part;
-                part.name           = model->shapes[shape].name + "_" + material_name(m);
-                part.first_index    = group_first_index;
-                part.num_indices    = indices.size() - group_first_index;
-                part.rendering_mode = GL_TRIANGLES;
-                part.vertex_array_object_id = vertex_array_object_id;
-                part.bbox_min       = group_bbox_min;
-                part.bbox_max       = group_bbox_max;
-                part.diffuse        = material_diffuse(m);
-                g_VirtualScene[part.name] = part;
             }
         }
 
-        // Objeto cobrindo o shape inteiro (compatível com os modelos existentes,
-        // que têm 1 material só e continuam sendo desenhados pelo nome do shape).
+        size_t last_index = indices.size() - 1;
+
         SceneObject theobject;
         theobject.name           = model->shapes[shape].name;
-        theobject.first_index    = shape_first_index;
-        theobject.num_indices    = indices.size() - shape_first_index;
-        theobject.rendering_mode = GL_TRIANGLES;
+        theobject.first_index    = first_index; // Primeiro índice
+        theobject.num_indices    = last_index - first_index + 1; // Número de indices
+        theobject.rendering_mode = GL_TRIANGLES;       // Índices correspondem ao tipo de rasterização GL_TRIANGLES.
         theobject.vertex_array_object_id = vertex_array_object_id;
-        theobject.bbox_min       = shape_bbox_min;
-        theobject.bbox_max       = shape_bbox_max;
-        theobject.diffuse        = material_diffuse(material_order[0]);
+
+        theobject.bbox_min = bbox_min;
+        theobject.bbox_max = bbox_max;
+
         g_VirtualScene[model->shapes[shape].name] = theobject;
     }
 
@@ -4767,9 +4110,6 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
             g_SpectatorHasLastPosition = false;
             g_SpectatorStuckTimer = 0.0f;
             g_SpectatorDetourTimer = 0.0f;
-            g_SpectatorTransitMode = 0;
-            g_SpectatorTransitPortal = -1;
-            g_SpectatorTransitDoor = -1;
             g_SpectatorAutoAdvanceTimer = -1.0f;
             g_SpectatorAutoRetryTimer = -1.0f;
             fprintf(stdout, "Modo Spectator IA: %s\n", g_SpectatorMode ? "ON" : "OFF");
@@ -4793,33 +4133,6 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         g_GameState.status == GameStatus::Playing)
     {
         g_MapView.Toggle();
-    }
-#endif
-
-#if BIGFOOT_FREEZE_DEBUG_ENABLED
-    if (key == GLFW_KEY_B && action == GLFW_PRESS)
-    {
-        g_BigfootFrozen = !g_BigfootFrozen;
-        fprintf(stdout, "Debug: Pe Grande %s\n", g_BigfootFrozen ? "CONGELADO" : "ATIVO");
-        fflush(stdout);
-    }
-#endif
-
-#if SHOW_COORDS_DEBUG_ENABLED
-    if (key == GLFW_KEY_F3 && action == GLFW_PRESS)
-    {
-        g_ShowCoordsDebug = !g_ShowCoordsDebug;
-        fprintf(stdout, "Debug: Coordenadas do jogador %s\n", g_ShowCoordsDebug ? "ON" : "OFF");
-        fflush(stdout);
-    }
-#endif
-
-#if DAY_MODE_DEBUG_ENABLED
-    if (key == GLFW_KEY_F2 && action == GLFW_PRESS)
-    {
-        g_DayMode = !g_DayMode;
-        fprintf(stdout, "Debug: Modo Dia %s\n", g_DayMode ? "ON" : "OFF");
-        fflush(stdout);
     }
 #endif
 }
