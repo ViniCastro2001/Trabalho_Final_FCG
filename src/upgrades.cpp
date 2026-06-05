@@ -1,6 +1,7 @@
 #include "upgrades.h"
 
 #include <cmath>
+#include <limits>
 
 namespace
 {
@@ -10,17 +11,16 @@ namespace
         const char* description;
         int base_cost;
         float cost_growth;
-        int max_level;
         float base_value;
         float per_level;
     };
 
     const UpgradeDef kUpgradeDefs[(int)UpgradeId::COUNT] = {
-        { "Energia",           "+0.5s de boost por lata.",        3, 1.5f, 10, 3.0f, 0.5f  },
-        { "Velocidade",        "+10% de velocidade.",             4, 1.7f, 10, 1.0f, 0.10f },
-        { "Alcance de coleta", "+0.3 de raio para coleta.",       5, 1.8f,  6, 0.0f, 0.30f },
-        { "Adrenalina",        "+0.25x de velocidade no boost.",  8, 2.0f,  6, 2.0f, 0.25f },
-        { "Recarga",           "+35% de velocidade de recarga.",  5, 1.6f,  8, 1.0f, 0.35f },
+        { "Energia",           "+0.5s de boost por lata.",        3, 1.5f, 3.0f, 0.5f  },
+        { "Velocidade",        "+10% de velocidade.",             4, 1.7f, 1.0f, 0.10f },
+        { "Alcance de coleta", "+0.3 de raio para coleta.",       5, 1.8f, 0.0f, 0.30f },
+        { "Adrenalina",        "+0.25x de velocidade no boost.",  8, 2.0f, 2.0f, 0.25f },
+        { "Recarga",           "+35% de velocidade de recarga.",  5, 1.6f, 1.0f, 0.35f },
     };
 
     int g_Coins = 0;
@@ -77,20 +77,16 @@ int GetUpgradeLevel(UpgradeId id)
 
 void SetUpgradeLevel(UpgradeId id, int level)
 {
-    const UpgradeDef& def = Def(id);
-
     if (level < 0)
         level = 0;
-
-    if (level > def.max_level)
-        level = def.max_level;
 
     g_Levels[(int)id] = level;
 }
 
 int GetUpgradeMaxLevel(UpgradeId id)
 {
-    return Def(id).max_level;
+    (void)id;
+    return 0;
 }
 
 int GetUpgradeCost(UpgradeId id)
@@ -98,10 +94,11 @@ int GetUpgradeCost(UpgradeId id)
     const UpgradeDef& def = Def(id);
     int level = g_Levels[(int)id];
 
-    if (level >= def.max_level)
-        return 0;
+    double cost = (double)def.base_cost * std::pow((double)def.cost_growth, (double)level);
 
-    float cost = (float)def.base_cost * std::pow(def.cost_growth, (float)level);
+    if (cost > (double)std::numeric_limits<int>::max())
+        return std::numeric_limits<int>::max();
+
     return (int)std::ceil(cost);
 }
 
@@ -133,11 +130,7 @@ bool IsInfiniteCoinsCheatActive()
 
 bool TryPurchaseUpgrade(UpgradeId id)
 {
-    const UpgradeDef& def = Def(id);
     int level = g_Levels[(int)id];
-
-    if (level >= def.max_level)
-        return false;
 
     int cost = GetUpgradeCost(id);
 

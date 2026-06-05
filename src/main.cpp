@@ -385,6 +385,7 @@ bool g_DayMode = false;
 #endif
 bool g_InfiniteAdrenalineCheat = false;
 bool g_SpectatorMode = false;
+bool g_SpectatorAggressiveMode = false;
 bool g_SpectatorWantsShoot = false;
 bool g_SpectatorRunning = false;
 float g_SpectatorAutoAdvanceTimer = -1.0f;
@@ -407,7 +408,6 @@ float g_CameraBobTimer = 0.0f;
 float g_CameraBobAmount = 0.0f;
 const float SHOTGUN_RECOIL_DURATION = 1.5f;
 float g_ShotgunCurrentRecoilDuration = SHOTGUN_RECOIL_DURATION;
-const int BASE_COLLECTIBLE_COUNT = 5;
 const float PRESTIGE_SPEED_STEP = 0.08f;
 const float PRESTIGE_HEALTH_STEP = 0.15f;
 const float PRESTIGE_SPEED_CAP = 1.45f;
@@ -481,8 +481,10 @@ float GetPrestigeHealthMultiplierForLevel(int level)
 
 int GetBigfootCountForLevel(int level)
 {
-    (void)level;
-    return 1;
+    if (level < 0)
+        return 1;
+
+    return 1 + level / 10;
 }
 
 int GetBigfootTierLevel(int level)
@@ -495,10 +497,10 @@ int GetBigfootTierLevel(int level)
 
 int GetPrestigeCollectibleCountForLevel(int level)
 {
-    if (level <= 5)
-        return BASE_COLLECTIBLE_COUNT + level;
+    if (level < 0)
+        return 1;
 
-    return BASE_COLLECTIBLE_COUNT + 5 + (level - 5 + 1) / 2;
+    return level + 1;
 }
 
 int GetPrestigeCollectibleCount()
@@ -753,12 +755,16 @@ void ResetGame(bool start_playing)
     g_RunPrestigeLevel = ClampPrestigeLevel(g_SelectedPrestigeLevel);
     g_Bigfoots.clear();
 
-    BigfootInstance instance;
-    instance.enemy.ApplyDifficultyMultipliers(
-        GetPrestigeSpeedMultiplierForLevel(g_RunPrestigeLevel),
-        GetPrestigeHealthMultiplierForLevel(g_RunPrestigeLevel)
-    );
-    g_Bigfoots.push_back(instance);
+    int bigfoot_count = GetBigfootCountForLevel(g_RunPrestigeLevel);
+    for (int i = 0; i < bigfoot_count; ++i)
+    {
+        BigfootInstance instance;
+        instance.enemy.ApplyDifficultyMultipliers(
+            GetPrestigeSpeedMultiplierForLevel(g_RunPrestigeLevel),
+            GetPrestigeHealthMultiplierForLevel(g_RunPrestigeLevel)
+        );
+        g_Bigfoots.push_back(instance);
+    }
 
     g_GameState.status = start_playing ? GameStatus::Playing : GameStatus::MainMenu;
     g_PrestigeAwardedForCurrentRun = false;
@@ -774,6 +780,7 @@ void ResetGame(bool start_playing)
     g_PlayerInvisibleToBigfoot = false;
     g_InfiniteAdrenalineCheat = false;
     g_SpectatorMode = false;
+    g_SpectatorAggressiveMode = false;
     g_SpectatorWantsShoot = false;
     g_SpectatorRunning = false;
     g_SpectatorAutoAdvanceTimer = -1.0f;
@@ -1253,7 +1260,30 @@ void UpdateSpectatorController(float delta_t)
 
     glm::vec4 camera_position = g_Camera.GetPosition();
     glm::vec3 player_position = glm::vec3(camera_position.x, camera_position.y, camera_position.z);
+
+    glm::vec3 bigfoot_position;
+    float bigfoot_distance = 0.0f;
+    bool has_bigfoot = SpectatorNearestLiveBigfoot(player_position, &bigfoot_position, &bigfoot_distance);
+
     glm::vec3 objective = SpectatorObjectiveTarget(player_position);
+
+    if (g_SpectatorAggressiveMode && has_bigfoot)
+    {
+        glm::vec3 away = NormalizeXZ(player_position - bigfoot_position);
+        if (away.x == 0.0f && away.z == 0.0f)
+            away = glm::vec3(1.0f, 0.0f, 0.0f);
+
+        glm::vec3 bigfoot_aim = bigfoot_position + glm::vec3(0.0f, 1.55f, 0.0f);
+        bool can_see_bigfoot = bigfoot_distance < 58.0f &&
+            SpectatorLineOfSight(player_position, bigfoot_aim);
+
+        if (bigfoot_distance < 12.0f)
+            objective = player_position + away * 10.0f;
+        else if (!can_see_bigfoot || bigfoot_distance > 26.0f)
+            objective = bigfoot_position + away * 18.0f;
+        else
+            objective = player_position;
+    }
 
     // Roteia entrada/saída dos prédios-corredor por waypoints de porta. O alvo
     // imediato (nav_target) pode ser uma porta; threading indica que estamos no
@@ -1263,10 +1293,6 @@ void UpdateSpectatorController(float delta_t)
 
     glm::vec3 desired_move = nav_target - player_position;
     desired_move.y = 0.0f;
-
-    glm::vec3 bigfoot_position;
-    float bigfoot_distance = 0.0f;
-    bool has_bigfoot = SpectatorNearestLiveBigfoot(player_position, &bigfoot_position, &bigfoot_distance);
 
     // Atravessando um vão de porta, ignoramos a evasão do Pé Grande: desviar no
     // meio da porta jogaria a IA contra as ombreiras.
@@ -1735,8 +1761,8 @@ void DrawBigfootHealthBar(GLFWwindow* window, float health_ratio)
         window,
         (g_Bigfoots.size() > 1) ? "PES GRANDES" : "PE GRANDE",
         -0.40f,
-        0.865f,
-        0.98f
+        0.925f,
+        0.82f
     );
 }
 
@@ -1872,7 +1898,6 @@ void DrawUpgradeShopOverlay(GLFWwindow* window)
         float row_y = -0.17f - i * 0.085f;
 
         int level = GetUpgradeLevel(id);
-        int max_level = GetUpgradeMaxLevel(id);
         int cost = GetUpgradeCost(id);
         float value = GetUpgradeValue(id);
 
@@ -1881,16 +1906,13 @@ void DrawUpgradeShopOverlay(GLFWwindow* window)
         TextRendering_PrintString(window, marker, col_marker, row_y, row_scale);
         TextRendering_PrintString(window, GetUpgradeName(id), col_name, row_y, row_scale);
 
-        snprintf(buf, sizeof(buf), "%d/%d", level, max_level);
+        snprintf(buf, sizeof(buf), "%d", level);
         TextRendering_PrintString(window, buf, col_level, row_y, row_scale);
 
         snprintf(buf, sizeof(buf), "%.2f", value);
         TextRendering_PrintString(window, buf, col_value, row_y, row_scale);
 
-        if (level >= max_level)
-            snprintf(buf, sizeof(buf), "MAX");
-        else
-            snprintf(buf, sizeof(buf), "%d", cost);
+        snprintf(buf, sizeof(buf), "%d", cost);
         TextRendering_PrintString(window, buf, col_cost, row_y, row_scale);
     }
 
@@ -2959,8 +2981,10 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
 
             if (g_SpectatorAutoAdvanceTimer <= 0.0f)
             {
+                bool keep_aggressive = g_SpectatorAggressiveMode;
                 ResetGame(true);
                 g_SpectatorMode = true;
+                g_SpectatorAggressiveMode = keep_aggressive;
                 g_SpectatorWantsShoot = false;
                 g_SpectatorRunning = false;
                 g_SpectatorMovementDirection = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -2986,8 +3010,10 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
             if (g_SpectatorAutoRetryTimer <= 0.0f)
             {
                 g_SelectedPrestigeLevel = ClampPrestigeLevel(g_RunPrestigeLevel);
+                bool keep_aggressive = g_SpectatorAggressiveMode;
                 ResetGame(true);
                 g_SpectatorMode = true;
+                g_SpectatorAggressiveMode = keep_aggressive;
                 g_SpectatorWantsShoot = false;
                 g_SpectatorRunning = false;
                 g_SpectatorMovementDirection = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -3601,7 +3627,13 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
 
         if (g_GameState.status == GameStatus::Playing && g_SpectatorMode)
         {
-            TextRendering_PrintString(window, "SPECTATOR IA", 0.58f, 0.82f, 1.0f);
+            TextRendering_PrintString(
+                window,
+                g_SpectatorAggressiveMode ? "SPECTATOR IA AGRESSIVA" : "SPECTATOR IA",
+                g_SpectatorAggressiveMode ? 0.42f : 0.58f,
+                0.82f,
+                g_SpectatorAggressiveMode ? 0.86f : 1.0f
+            );
         }
         else if (g_GameState.status == GameStatus::Won &&
                  g_SpectatorMode &&
@@ -4772,11 +4804,41 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
             g_SpectatorTransitDoor = -1;
             g_SpectatorAutoAdvanceTimer = -1.0f;
             g_SpectatorAutoRetryTimer = -1.0f;
+            if (!g_SpectatorMode)
+                g_SpectatorAggressiveMode = false;
             fprintf(stdout, "Modo Spectator IA: %s\n", g_SpectatorMode ? "ON" : "OFF");
         }
         else
         {
             fprintf(stdout, "Modo Spectator IA so pode ser alternado durante a partida.\n");
+        }
+        fflush(stdout);
+    }
+
+    if (key == GLFW_KEY_K && action == GLFW_PRESS)
+    {
+        if (g_GameState.status == GameStatus::Playing)
+        {
+            g_SpectatorMode = true;
+            g_SpectatorAggressiveMode = !g_SpectatorAggressiveMode;
+            g_SpectatorWantsShoot = false;
+            g_SpectatorRunning = false;
+            g_SpectatorMovementDirection = glm::vec3(0.0f, 0.0f, 0.0f);
+            g_SpectatorLastPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+            g_SpectatorDetourDirection = glm::vec3(0.0f, 0.0f, 0.0f);
+            g_SpectatorHasLastPosition = false;
+            g_SpectatorStuckTimer = 0.0f;
+            g_SpectatorDetourTimer = 0.0f;
+            g_SpectatorTransitMode = 0;
+            g_SpectatorTransitPortal = -1;
+            g_SpectatorTransitDoor = -1;
+            g_SpectatorAutoAdvanceTimer = -1.0f;
+            g_SpectatorAutoRetryTimer = -1.0f;
+            fprintf(stdout, "Modo Spectator IA agressiva: %s\n", g_SpectatorAggressiveMode ? "ON" : "OFF");
+        }
+        else
+        {
+            fprintf(stdout, "Modo Spectator IA agressiva so pode ser alternado durante a partida.\n");
         }
         fflush(stdout);
     }
