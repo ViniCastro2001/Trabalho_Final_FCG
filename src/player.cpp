@@ -7,6 +7,7 @@
 #include "collisions.h"
 #include "scene.h"
 #include "upgrades.h"
+#include "monster_cam.h"
 
 extern void SavePrestigeMemory();
 
@@ -187,6 +188,7 @@ void Player::MoveAndCollect(glm::vec3 movement_direction, bool running, float de
         float boost_per_item = GetUpgradeValue(UpgradeId::BoostDuration);
         energy_boost_timer += boost_per_item * collected_count;
         AddCoins(collected_count);
+        AddVisionSeconds((float)collected_count);
         SavePrestigeMemory();
     }
 }

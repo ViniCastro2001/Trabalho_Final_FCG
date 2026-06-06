@@ -21,6 +21,8 @@ set(SOURCES
   src/scene.cpp
   src/bigfoot.cpp
   src/upgrades.cpp
+  src/monster_cam.cpp
+  src/player_model.cpp
 )
 
 cmake_minimum_required(VERSION 3.5.0)

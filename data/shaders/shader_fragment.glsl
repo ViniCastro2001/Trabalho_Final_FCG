@@ -53,6 +53,10 @@ uniform mat4 projection;
 #define CAR 29
 // Modelo .obj de banco de madeira (wooden-bench).
 #define BENCH 30
+// Corpo procedural do jogador (visível no "Modo Monstro"): jaqueta de caçador
+// e calça. A cabeça/pele reutilizam o material HANDS.
+#define PLAYER_CLOTH 31
+#define PLAYER_PANTS 32
 
 uniform int object_id;
 
@@ -89,6 +93,15 @@ uniform vec3 u_occluder_max[MAX_OCCLUDERS];
 
 // Modo dia (debug): quando 1, liga um sol direcional + ceu claro.
 uniform int u_day_mode;
+
+// "Visão do Monstro": quando 1, aplica o filtro térmico/infravermelho usado
+// pela câmera do Pé Grande (ver monster_cam.h / IsBigfootCamActive).
+uniform int u_monster_vision_active;
+// Tempo acumulado em segundos, para animar as scanlines e o grão do
+// filtro de visão do monstro.
+uniform float u_time;
+// Resolução do framebuffer (em pixels), para a vinheta do filtro de visão.
+uniform vec2 u_resolution;
 
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
@@ -349,6 +362,16 @@ void main()
             uvw = wp.xz;   // face voltada para Y (topo/base)
         Kd0 = texture(TextureImage0, uvw).rgb;
     }
+    else if ( object_id == PLAYER_CLOTH )
+    {
+        // Jaqueta xadrez de caçador, vermelho escuro.
+        Kd0 = vec3(0.34, 0.11, 0.10);
+    }
+    else if ( object_id == PLAYER_PANTS )
+    {
+        // Calça jeans escura.
+        Kd0 = vec3(0.13, 0.16, 0.24);
+    }
     // Equação de Iluminação: soma da contribuição de todos os postes de luz
     // ativos, com atenuação por distância e teste de sombra por interseção
     // raio-AABB contra os obstáculos do cenário.
@@ -461,6 +484,59 @@ void main()
     //    transparentes que estão mais longe da câmera).
     // Alpha default = 1 = 100% opaco = 0% transparente
     color.a = 1;
+
+    // ============================================================
+    // "Visão do Monstro": filtro de fúria aplicado quando a câmera do
+    // Pé Grande está ativa. Mapeia o brilho da cena para uma rampa
+    // dominada por vermelho (sangue/raiva), realça a presa (corpo do
+    // jogador), e adiciona uma vinheta, scanlines e grão.
+    // ============================================================
+    if ( u_monster_vision_active == 1 )
+    {
+        // Luminância perceptual da cor já iluminada (com neblina).
+        float lum = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+
+        // A presa (corpo do jogador desenhado no Modo Monstro) aparece
+        // "quente" de propósito, brilhando mesmo através da neblina.
+        bool is_prey = (object_id == PLAYER_CLOTH ||
+                        object_id == PLAYER_PANTS ||
+                        object_id == HANDS);
+        if ( is_prey )
+            lum = max(lum, 0.85);
+
+        // Rampa de fúria: preto -> vermelho-sangue escuro -> vermelho vivo
+        // -> laranja quase branco. Tudo puxado pro vermelho/raiva.
+        vec3 shadow = vec3(0.05, 0.00, 0.00);
+        vec3 blood  = vec3(0.45, 0.02, 0.02);
+        vec3 fire   = vec3(0.90, 0.16, 0.04);
+        vec3 hot    = vec3(1.00, 0.65, 0.30);
+
+        vec3 fury;
+        if ( lum < 0.33 )
+            fury = mix(shadow, blood, lum / 0.33);
+        else if ( lum < 0.66 )
+            fury = mix(blood, fire, (lum - 0.33) / 0.33);
+        else
+            fury = mix(fire, hot, (lum - 0.66) / 0.34);
+
+        // Vinheta estática: as bordas escurecem para um tom de sangue,
+        // emoldurando a visão. Posição na tela normalizada por u_resolution.
+        vec2 uv = gl_FragCoord.xy / u_resolution;
+        float dist = length(uv - vec2(0.5));
+        float vignette = 1.0 - 0.55 * smoothstep(0.10, 0.80, dist);
+        fury = mix(blood * 0.20, fury, vignette);
+
+        // Scanlines horizontais (varredura analógica de câmera).
+        float scan = 0.85 + 0.15 * sin(gl_FragCoord.y * 1.4 + u_time * 8.0);
+        fury *= scan;
+
+        // Grão de filme: ruído pseudo-aleatório por pixel e por quadro.
+        float grain = fract(sin(dot(gl_FragCoord.xy + vec2(u_time),
+                                    vec2(12.9898, 78.233))) * 43758.5453);
+        fury += (grain - 0.5) * 0.06;
+
+        color.rgb = clamp(fury, 0.0, 1.0);
+    }
 
     // Cor final com correção gamma, considerando monitor sRGB.
     // Veja https://en.wikipedia.org/w/index.php?title=Gamma_correction&oldid=751281772#Windows.2C_Mac.2C_sRGB_and_TV.2Fvideo_standard_gammas

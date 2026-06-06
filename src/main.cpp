@@ -55,6 +55,10 @@
 #include "audio.h"
 #include "collisions.h"
 #include "upgrades.h"
+#include "monster_cam.h"
+#include "object_ids.h"
+#include "gpu_render.h"
+#include "player_model.h"
 
 //headers do jogo
 #include "camera.h"
@@ -292,6 +296,9 @@ GLint g_bbox_max_uniform;
 #if MAP_VIEW_ENABLED
 GLint g_map_view_uniform;
 #endif
+GLint g_monster_vision_uniform; // Filtro de fúria da câmera do Pé Grande.
+GLint g_time_uniform;           // Tempo (s) para animar o filtro de visão.
+GLint g_resolution_uniform;     // Resolução do framebuffer para a vinheta.
 
 // Locations dos uniforms de iluminação por postes de luz.
 const int MAX_LIGHTS_CPU = 8;
@@ -345,33 +352,8 @@ bool g_ShootButtonWasPressed = false;
 MapView g_MapView;
 #endif
 
-const int OBJECT_SPHERE = 0;
-const int OBJECT_PLANE = 2;
-const int OBJECT_SAFE_ZONE = 3;
-const int OBJECT_BIGFOOT = 4;
-const int OBJECT_WALL = 5;
-const int OBJECT_BIGFOOT_EYES = 6;
-const int OBJECT_HUD_BAR_BACK = 7;
-const int OBJECT_HUD_BAR_FILL = 8;
-const int OBJECT_SHOTGUN = 9;
-const int OBJECT_HANDS = 10;
-const int OBJECT_ROAD = 11;
-const int OBJECT_SIDEWALK = 12;
-const int OBJECT_CONCRETE = 13;
-const int OBJECT_METAL_ROOF = 14;
-const int OBJECT_WINDOW = 15;
-const int OBJECT_TREE_TRUNK = 16;
-const int OBJECT_TREE_LEAVES = 17;
-const int OBJECT_CAR_BODY = 18;
-const int OBJECT_CAR_GLASS = 19;
-const int OBJECT_LAMP_LIGHT = 20;
-const int OBJECT_MONSTER_DRINK = 21;
-const int OBJECT_WEAPON_METAL = 25;
-const int OBJECT_WEAPON_WOOD = 26;
-const int OBJECT_WEAPON_ACCENT = 27;
-const int OBJECT_ROCKY_FLOOR = 28;
-const int OBJECT_CAR = 29; // Modelo .obj de carro (multi-material via u_material_diffuse).
-const int OBJECT_BENCH = 30; // Modelo .obj de banco de madeira (wooden-bench).
+// Identificadores de objeto/material agora vivem em include/object_ids.h
+// (contrato compartilhado com o fragment shader e com os módulos de modelo).
 
 bool g_PlayerInvisibleToBigfoot = false;
 #if BIGFOOT_FREEZE_DEBUG_ENABLED
@@ -401,6 +383,17 @@ float g_SpectatorDetourTimer = 0.0f;
 int g_SpectatorTransitMode = 0;
 int g_SpectatorTransitPortal = -1;
 int g_SpectatorTransitDoor = -1;
+// Câmera na cabeça do Pé Grande: enquanto o jogador segura Alt (e tem segundos
+// acumulados), a visão passa para a cabeça do Pé Grande vivo mais próximo. O
+// jogador não controla o Pé Grande nem a si mesmo — apenas observa, e o mundo
+// continua rodando normalmente. Os segundos são drenados enquanto a câmera está
+// ativa e ela desliga sozinha ao zerar.
+// Rastreio da locomoção do jogador para animar as pernas do corpo no Modo
+// Monstro (o jogador pode andar com WASD enquanto observa pela câmera do Pé
+// Grande). Intensidade em [0..1], suavizada.
+glm::vec3 g_PlayerPrevPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+bool g_PlayerHasPrevPosition = false;
+float g_PlayerWalkIntensity = 0.0f;
 float g_ShotgunRecoilTimer = 0.0f;
 float g_PlayerFallTimer = 0.0f;
 bool g_PlayerFallAnimationStarted = false;
@@ -524,6 +517,9 @@ void SavePrestigeMemory()
         save_file << GetUpgradeLevel((UpgradeId)i);
     }
     save_file << "\n";
+
+    // Linha 4: segundos de visão acumulados (recurso da câmera do Pé Grande).
+    save_file << GetVisionSeconds() << "\n";
 }
 
 void LoadPrestigeMemory()
@@ -556,6 +552,13 @@ void LoadPrestigeMemory()
             SetUpgradeLevel((UpgradeId)i, 0);
     }
 
+    // Linha 4: segundos de visão (opcional; saves antigos não têm e ficam em 0).
+    float saved_vision_seconds = 0.0f;
+    if (save_file >> saved_vision_seconds)
+        SetRawVisionSeconds(saved_vision_seconds);
+    else
+        SetRawVisionSeconds(0.0f);
+
     g_LegacyResetUnlocked = (g_HighestUnlockedPrestigeLevel >= LEGACY_RESET_PRESTIGE_REQUIRED);
 }
 
@@ -566,6 +569,7 @@ void PerformLegacyReset()
     g_SelectedPrestigeLevel = 0;
     g_RunPrestigeLevel = 0;
     ResetUpgradesState();
+    ResetVisionSeconds();
     g_LegacyResetUnlocked = false;
     g_SelectedUpgradeRow = 0;
     SavePrestigeMemory();
@@ -798,6 +802,9 @@ void ResetGame(bool start_playing)
     g_PlayerFallAnimationStarted = false;
     g_CameraBobTimer = 0.0f;
     g_CameraBobAmount = 0.0f;
+    SetBigfootCamActive(false);
+    g_PlayerHasPrevPosition = false;
+    g_PlayerWalkIntensity = 0.0f;
 
     ConfigureCollectiblesForPrestige();
     RandomizeCollectibleSpawns();
@@ -1423,6 +1430,31 @@ static glm::vec3 RotateYaw(glm::vec3 v, float yaw)
         v.y,
         -s * v.x + c * v.z
     );
+}
+
+// Retorna o índice em g_Bigfoots do Pé Grande vivo mais próximo de from, ou -1
+// se não houver nenhum vivo. Usado pela câmera na cabeça do Pé Grande.
+static int NearestLiveBigfootIndex(glm::vec3 from)
+{
+    int best_index = -1;
+    float best_distance_sq = 0.0f;
+
+    for (size_t i = 0; i < g_Bigfoots.size(); ++i)
+    {
+        if (g_Bigfoots[i].enemy.IsDead())
+            continue;
+
+        glm::vec3 to = g_Bigfoots[i].enemy.GetPosition() - from;
+        float distance_sq = to.x*to.x + to.y*to.y + to.z*to.z;
+
+        if (best_index < 0 || distance_sq < best_distance_sq)
+        {
+            best_index = (int)i;
+            best_distance_sq = distance_sq;
+        }
+    }
+
+    return best_index;
 }
 
 float UpdateBigfootFacing(size_t index, glm::vec3 current_position, float delta_t)
@@ -3032,6 +3064,35 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
 
         UpdateSpectatorController(delta_t);
 
+        // Câmera na cabeça do Pé Grande: ativa enquanto o jogador segura Alt,
+        // tem segundos de visão acumulados e existe um Pé Grande vivo. Drena os
+        // segundos a cada frame e desliga sozinha ao zerar. Indisponível no modo
+        // espectador (piloto-automático de IA).
+        {
+            bool alt_held =
+                glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
+                glfwGetKey(window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
+
+            glm::vec4 cam_pos = g_Camera.GetPosition();
+
+            // Contexto que pertence ao main: o jogador está pedindo a câmera
+            // (ALT durante o jogo, fora do espectador/mapa) e há um Pé Grande
+            // alvo por perto. A política do recurso (segundos de visão) e o
+            // consumo ficam dentro de UpdateBigfootCam.
+            bool wants_cam =
+                g_GameState.status == GameStatus::Playing &&
+                !g_SpectatorMode &&
+#if MAP_VIEW_ENABLED
+                !g_MapView.IsActive() &&
+#endif
+                alt_held;
+
+            bool target_available =
+                NearestLiveBigfootIndex(glm::vec3(cam_pos.x, cam_pos.y, cam_pos.z)) >= 0;
+
+            UpdateBigfootCam(wants_cam, target_available, delta_t);
+        }
+
         bool movement_key_pressed =
             glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS ||
             glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS ||
@@ -3071,6 +3132,8 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
             for (const Collectible& c : collectibles_before)
                 was_collected.push_back(c.collected);
 
+            // No Modo Monstro o jogador continua podendo andar com WASD (apenas
+            // não atira); o corpo do caçador anima as pernas conforme se move.
             if (g_SpectatorMode)
                 g_Player.UpdateAutonomous(GetSpectatorMovementDirection(), IsSpectatorRunning(), delta_t);
             else
@@ -3089,6 +3152,29 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         }
 
         glm::vec4 player_position = g_Camera.GetPosition();
+
+        // Intensidade de caminhada do jogador, derivada do deslocamento real.
+        // Anima as pernas do corpo do caçador exibido no Modo Monstro.
+        if (g_GameState.status == GameStatus::Playing)
+        {
+            glm::vec3 cur = glm::vec3(player_position.x, player_position.y, player_position.z);
+            float target_intensity = 0.0f;
+
+            if (g_PlayerHasPrevPosition && delta_t > 0.0001f)
+            {
+                glm::vec3 moved = cur - g_PlayerPrevPosition;
+                moved.y = 0.0f;
+                float speed = sqrt(moved.x*moved.x + moved.z*moved.z) / delta_t;
+                target_intensity = speed / 5.8f; // normaliza pela velocidade de caminhada
+                if (target_intensity > 1.0f)
+                    target_intensity = 1.0f;
+            }
+
+            float blend = 1.0f - exp(-delta_t * 8.0f);
+            g_PlayerWalkIntensity += (target_intensity - g_PlayerWalkIntensity) * blend;
+            g_PlayerPrevPosition = cur;
+            g_PlayerHasPrevPosition = true;
+        }
 
         if (g_GameState.status == GameStatus::Playing
 #if MAP_VIEW_ENABLED
@@ -3143,6 +3229,7 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
             (g_SpectatorMode && ShouldSpectatorShoot() && g_ShotgunRecoilTimer <= 0.0f);
 
         if (g_GameState.status == GameStatus::Playing &&
+            !IsBigfootCamActive() &&
             shoot_button_pressed &&
             !g_ShootButtonWasPressed &&
             g_ShotgunRecoilTimer <= 0.0f)
@@ -3232,6 +3319,20 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         {
             // Computamos a matriz "View" utilizando os parâmetros da câmera para
             // definir o sistema de coordenadas da câmera.  Veja slides 2-14, 184-190 e 236-242 do documento Aula_08_Sistemas_de_Coordenadas.pdf.
+            int bigfoot_cam_index = IsBigfootCamActive()
+                ? NearestLiveBigfootIndex(glm::vec3(camera_position_c.x, camera_position_c.y, camera_position_c.z))
+                : -1;
+
+            if (IsBigfootCamActive() && bigfoot_cam_index >= 0)
+            {
+                // Câmera posicionada na cabeça do Pé Grande vivo mais próximo,
+                // olhando na direção em que ele anda. O jogador apenas observa
+                // (não controla o Pé Grande), então não aplicamos bob nem queda.
+                const BigfootInstance& bf = g_Bigfoots[(size_t)bigfoot_cam_index];
+                view = ComputeBigfootCamView(bf.enemy.GetPosition(), bf.render_yaw);
+            }
+            else
+            {
             view = Matrix_Camera_View(camera_position_c, camera_view_vector, camera_up_vector);
 
             if (!g_PlayerFallAnimationStarted && g_CameraBobAmount > 0.001f)
@@ -3253,10 +3354,19 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
 
                 fall = fall * fall * (3.0f - 2.0f * fall);
 
+                // O olho desce até perto do chão (de ~1.7 para ~0.30), como se o
+                // jogador caísse, e só então aplicamos o tombamento para o lado.
+                const float ground_eye_y = 0.55f;
+                glm::vec4 fallen_position = camera_position_c;
+                fallen_position.y = camera_position_c.y
+                    + (ground_eye_y - camera_position_c.y) * fall;
+
+                view = Matrix_Camera_View(fallen_position, camera_view_vector, camera_up_vector);
+
                 view = Matrix_Rotate_Z(1.35f * fall)
                     * Matrix_Rotate_X(-0.65f * fall)
-                    * Matrix_Translate(0.0f, -1.05f * fall, 0.0f)
                     * view;
+            }
             }
 
             // Agora computamos a matriz de Projeção.
@@ -3297,6 +3407,16 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
 #if MAP_VIEW_ENABLED
         glUniform1i(g_map_view_uniform, g_MapView.IsActive() ? 1 : 0);
 #endif
+        // Liga o filtro de fúria da "Visão do Monstro" quando a câmera do Pé
+        // Grande está ativa; u_time alimenta as scanlines/grão e u_resolution
+        // permite a vinheta.
+        glUniform1i(g_monster_vision_uniform, IsBigfootCamActive() ? 1 : 0);
+        glUniform1f(g_time_uniform, current_time);
+        {
+            int fb_w, fb_h;
+            glfwGetFramebufferSize(window, &fb_w, &fb_h);
+            glUniform2f(g_resolution_uniform, (float)fb_w, (float)fb_h);
+        }
 
         #define SPHERE 0
         #define BUNNY  1
@@ -3412,7 +3532,25 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
 #endif
            )
         {
-            DrawFirstPersonWeapon(camera_position_c, camera_view_vector, camera_up_vector, g_ShotgunRecoilTimer, g_ShotgunCurrentRecoilDuration);
+            if (IsBigfootCamActive())
+            {
+                // No Modo Monstro vemos o jogador de fora (pela cabeça do Pé
+                // Grande), então desenhamos o corpo do caçador na posição dele
+                // em vez do viewmodel de arma em primeira pessoa.
+                float player_yaw = atan2(camera_view_vector.x, camera_view_vector.z);
+                glm::vec3 player_feet = glm::vec3(
+                    camera_position_c.x,
+                    camera_position_c.y - 1.7f,
+                    camera_position_c.z
+                );
+                DrawPlayerModel(player_feet, player_yaw, current_time, g_PlayerWalkIntensity,
+                    g_ShotgunRecoilTimer, g_ShotgunCurrentRecoilDuration);
+            }
+            else if (!g_PlayerFallAnimationStarted)
+            {
+                // Ao morrer (animação de queda), a arma some junto com o jogador.
+                DrawFirstPersonWeapon(camera_position_c, camera_view_vector, camera_up_vector, g_ShotgunRecoilTimer, g_ShotgunCurrentRecoilDuration);
+            }
         }
 
         // Filtro esverdeado de "adrenalina" enquanto o energy boost estiver ativo.
@@ -3430,6 +3568,10 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
 
             TextRendering_DrawRectPx(window, 0, 0, fb_w, fb_h, 0.20f, 1.00f, 0.35f, alpha);
         }
+
+        // (O antigo tint vermelho 2D do Modo Monstro foi substituído pelo filtro
+        // térmico/infravermelho aplicado por fragmento em shader_fragment.glsl,
+        // via uniform u_monster_vision_active.)
 
         // TextRendering_ShowEulerAngles(window);
 
@@ -3624,6 +3766,24 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
         char coins_hud[64];
         snprintf(coins_hud, sizeof(coins_hud), "Pontos: %d", GetRawCoins());
         TextRendering_PrintString(window, coins_hud, -0.95f, 0.72f, 1.02f);
+
+        // Segundos de visão acumulados (recurso da câmera do Pé Grande, tecla Alt).
+        char vision_hud[64];
+        snprintf(vision_hud, sizeof(vision_hud), "Modo Monstro: %.1fs", GetVisionSeconds());
+        TextRendering_PrintString(window, vision_hud, -0.95f, 0.62f, 1.02f);
+
+        // Indicador quando o jogador está observando pela cabeça do Pé Grande.
+        if (IsBigfootCamActive())
+        {
+            char bigfoot_cam_text[64];
+            snprintf(
+                bigfoot_cam_text,
+                sizeof(bigfoot_cam_text),
+                "MODO MONSTRO  %.1fs",
+                GetVisionSeconds()
+            );
+            TextRendering_PrintString(window, bigfoot_cam_text, -0.32f, 0.82f, 1.0f);
+        }
 
         if (g_GameState.status == GameStatus::Playing && g_SpectatorMode)
         {
@@ -3903,6 +4063,9 @@ void LoadShadersFromFiles()
 #if MAP_VIEW_ENABLED
     g_map_view_uniform   = glGetUniformLocation(g_GpuProgramID, "u_map_view_active");
 #endif
+    g_monster_vision_uniform = glGetUniformLocation(g_GpuProgramID, "u_monster_vision_active");
+    g_time_uniform           = glGetUniformLocation(g_GpuProgramID, "u_time");
+    g_resolution_uniform     = glGetUniformLocation(g_GpuProgramID, "u_resolution");
 
     g_num_lights_uniform      = glGetUniformLocation(g_GpuProgramID, "u_num_lights");
     g_light_pos_uniform       = glGetUniformLocation(g_GpuProgramID, "u_light_pos");
