@@ -2076,7 +2076,17 @@ void DrawFirstPersonWeapon(glm::vec4 camera_position, glm::vec4 camera_view, glm
         DrawVirtualObject(object_name);
     };
 
-    glDisable(GL_DEPTH_TEST);
+    // Limpamos o depth buffer (em vez de desligar o teste) para a arma aparecer
+    // sempre a frente do cenario, mas mantendo o teste de profundidade ativo para
+    // que o modelo se auto-oclua corretamente (sem aparencia "transparente").
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    // Desligamos o backface culling para o modelo da shotgun: o winding do .obj
+    // baixado nao segue a convencao CCW do jogo, entao as faces externas estavam
+    // sendo descartadas e o interior aparecia ("luz entrando" pela arma). Com o
+    // teste de profundidade ligado, a face mais proxima vence e o modelo fica
+    // solido e bem iluminado de qualquer angulo.
+    glDisable(GL_CULL_FACE);
 
     if (g_Player.IsEnergyBoostActive())
     {
@@ -2100,42 +2110,34 @@ void DrawFirstPersonWeapon(glm::vec4 camera_position, glm::vec4 camera_view, glm
         }
     }
 
-    auto WeaponPart = [&](const char* object_name, int object_id, glm::vec3 local_position, glm::vec3 scale)
-    {
-        DrawPart(object_name, object_id, Matrix_WeaponPart(origin, right, up, forward, local_position, scale) * recoil_rotation);
-    };
+    // Base ortonormal (right/up/forward) da arma, posicionada em "origin" a frente
+    // da camera. As colunas levam coordenadas locais (x=right, y=up, z=forward)
+    // para o mundo.
+    glm::mat4 weapon_basis = Matrix(
+        right.x, up.x, forward.x, origin.x,
+        right.y, up.y, forward.y, origin.y,
+        right.z, up.z, forward.z, origin.z,
+        0.0f,    0.0f, 0.0f,      1.0f);
 
-    auto AngledWeaponPart = [&](const char* object_name, int object_id, glm::vec3 local_position, glm::vec3 scale, float pitch, float roll)
-    {
-        glm::mat4 model = Matrix_WeaponPart(origin, right, up, forward, local_position, scale)
-            * Matrix_Rotate_X(pitch)
-            * Matrix_Rotate_Z(roll)
-            * recoil_rotation;
-        DrawPart(object_name, object_id, model);
-    };
+    // Ajustes do modelo .obj da shotgun (tune visual em primeira pessoa).
+    const float WEAPON_SCALE = 0.28f;  // bbox do modelo tem ~5 un de comprimento
+    const float WEAPON_FWD   = 0.25f;  // desloca ao longo do cano (z local)
+    const float WEAPON_RIGHT = 0.00f;  // desloca lateralmente (x local)
+    const float WEAPON_UP    = 0.10f;  // sobe/desce o modelo (y local)
 
-    // O eixo Z local aponta para frente: coronha perto da camera, boca do cano longe.
-    AngledWeaponPart("the_cube", OBJECT_WEAPON_WOOD, glm::vec3(0.12f, -0.18f, -0.45f), glm::vec3(0.20f, 0.11f, 0.34f), -0.10f, -0.04f);
-    WeaponPart("the_cube", OBJECT_WEAPON_METAL, glm::vec3(0.04f, -0.04f, -0.12f), glm::vec3(0.22f, 0.13f, 0.30f));
-    AngledWeaponPart("the_cube", OBJECT_WEAPON_WOOD, glm::vec3(0.08f, -0.27f, -0.13f), glm::vec3(0.10f, 0.22f, 0.11f), 0.0f, -0.10f);
-    WeaponPart("the_cube", OBJECT_WEAPON_METAL, glm::vec3(0.00f, -0.07f, 0.20f), glm::vec3(0.17f, 0.10f, 0.30f));
-    WeaponPart("the_cube", OBJECT_WEAPON_WOOD, glm::vec3(0.00f, -0.17f, 0.38f), glm::vec3(0.22f, 0.09f, 0.28f));
+    // O eixo +X do modelo (boca do cano) deve apontar para frente (z local): uma
+    // rotacao de -90 graus em Y mapeia +X -> +Z, mantendo +Y para cima.
+    glm::mat4 weapon_model = weapon_basis
+        * recoil_rotation
+        * Matrix_Translate(WEAPON_RIGHT, WEAPON_UP, WEAPON_FWD)
+        * Matrix_Rotate_Y(-1.5707963f)
+        * Matrix_Scale(WEAPON_SCALE, WEAPON_SCALE, WEAPON_SCALE);
 
-    WeaponPart("the_cube", OBJECT_WEAPON_METAL, glm::vec3(-0.055f, 0.015f, 0.62f), glm::vec3(0.040f, 0.040f, 0.68f));
-    WeaponPart("the_cube", OBJECT_WEAPON_METAL, glm::vec3(0.055f, 0.015f, 0.62f), glm::vec3(0.040f, 0.040f, 0.68f));
-    WeaponPart("the_cube", OBJECT_WEAPON_METAL, glm::vec3(0.00f, -0.035f, 0.62f), glm::vec3(0.030f, 0.030f, 0.58f));
-    WeaponPart("the_cube", OBJECT_WEAPON_METAL, glm::vec3(-0.055f, 0.015f, 0.98f), glm::vec3(0.055f, 0.055f, 0.045f));
-    WeaponPart("the_cube", OBJECT_WEAPON_METAL, glm::vec3(0.055f, 0.015f, 0.98f), glm::vec3(0.055f, 0.055f, 0.045f));
-    WeaponPart("the_cube", OBJECT_WEAPON_METAL, glm::vec3(0.00f, 0.075f, 0.24f), glm::vec3(0.045f, 0.020f, 0.38f));
-    WeaponPart("the_sphere", OBJECT_WEAPON_ACCENT, glm::vec3(0.00f, 0.105f, 1.00f), glm::vec3(0.018f, 0.018f, 0.018f));
-    WeaponPart("the_cube", OBJECT_WEAPON_ACCENT, glm::vec3(0.135f, -0.04f, 0.02f), glm::vec3(0.018f, 0.040f, 0.12f));
-    WeaponPart("the_cube", OBJECT_WEAPON_METAL, glm::vec3(0.00f, -0.205f, -0.02f), glm::vec3(0.090f, 0.025f, 0.11f));
+    DrawPart("Cube.002_Cube.003", OBJECT_WEAPON_METAL, weapon_model);
+    DrawPart("Cube.000_Cube.016", OBJECT_WEAPON_METAL, weapon_model);
+    DrawPart("Cube.001_Cube.017", OBJECT_WEAPON_METAL, weapon_model);
 
-    WeaponPart("the_cube", OBJECT_HANDS, glm::vec3(-0.14f, -0.26f, 0.31f), glm::vec3(0.075f, 0.055f, 0.20f));
-    WeaponPart("the_sphere", OBJECT_HANDS, glm::vec3(-0.14f, -0.21f, 0.30f), glm::vec3(0.105f, 0.080f, 0.12f));
-    WeaponPart("the_cube", OBJECT_HANDS, glm::vec3(0.16f, -0.32f, -0.20f), glm::vec3(0.070f, 0.055f, 0.18f));
-    WeaponPart("the_sphere", OBJECT_HANDS, glm::vec3(0.16f, -0.26f, -0.22f), glm::vec3(0.110f, 0.080f, 0.105f));
-
+    glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
 }
 
@@ -2955,6 +2957,13 @@ LoadTextureImage("../../data/textures/textura_tijolos.png");      // TextureImag
     ObjModel benchmodel("../../data/models/wooden-bench/16452_WoodenBench_NEW.obj", "../../data/models/wooden-bench/");
     ComputeNormals(&benchmodel);
     BuildTrianglesAndAddToVirtualScene(&benchmodel);
+
+    // Shotgun em primeira pessoa (Remington 870). Modelo deitado no eixo X:
+    // +X e a boca do cano, -X a empunhadura. Shapes "Cube.002_Cube.003",
+    // "Cube.000_Cube.016" e "Cube.001_Cube.017"; sem .mtl (cor vem do object_id).
+    ObjModel shotgunmodel("../../data/models/shotgun/Remengton_870.obj", "../../data/models/shotgun/");
+    ComputeNormals(&shotgunmodel);
+    BuildTrianglesAndAddToVirtualScene(&shotgunmodel);
 
     if ( argc > 1 )
     {
