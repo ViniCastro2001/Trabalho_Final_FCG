@@ -9,7 +9,7 @@
 
 ## Descrição
 
-**Pé Grande do Vale** é um jogo de terror/ação em primeira pessoa feito com OpenGL. O jogo simula a experiência comum de um aluno no Campus do Vale da UFRGS durante a noite. Ele deve coletar latas de energético e precisa escapar para zona segura (parada de ônibus) enquanto é perseguido pelo Pé Grande. Para sobreviver, o jogador pode usar uma shotgun para afastar o inimigo. O jogador pode vencer ao escapar, ou derrotar o Pé Grande. Com múltiplos níveis e upgrades, cada sessão é uma aventura que se torna cada vez mais difícil e intenso.
+**Pé Grande do Vale** é um jogo de terror/ação em primeira pessoa feito com OpenGL. O jogo simula a experiência comum de um aluno no Campus do Vale da UFRGS durante a noite. Ele deve coletar latas de energético e precisa escapar para zona segura (parada de ônibus) enquanto é perseguido pelo Pé Grande. Para sobreviver, o jogador pode usar uma shotgun para afastar o monstro, ou até mesmo derrotá-lo. O jogador pode vencer ao escapar, ou derrotar o Pé Grande. Com múltiplos níveis e upgrades, cada sessão é uma aventura que se torna cada vez mais difícil e intensa.
 
 A aplicação possui um HUD simples, mecânica de coleta de itens, colisão, tiro, dano e vida dos inimigos, loja de upgrades, áudio, música, mapa, progressão de níveis e modo Spectator/IA.
 
@@ -31,6 +31,7 @@ O arquivo [`PROMPTS.md`](PROMPTS.md) contém os prompts utilizados durante o des
 <img width="1908" height="982" alt="image" src="https://github.com/user-attachments/assets/9812750d-c6b8-430e-844d-80ce861d0492" />
 
 <img width="1273" height="712" alt="image" src="https://github.com/user-attachments/assets/f7a75b46-51c9-4d01-b8fb-12ef79a695c3" />
+
 
 
 ## Controles
@@ -57,6 +58,14 @@ O arquivo [`PROMPTS.md`](PROMPTS.md) contém os prompts utilizados durante o des
 2. Sobreviver ao Pé Grande.
 3. Usar a shotgun para afastar o inimigo.
 4. Entrar na zona segura após coletar os itens.
+
+
+## Disponível online!
+Uma versão com apenas o executável e essencias pode ser baixada de graça através deste link
+
+https://bitmancer-games.itch.io/jogo-portas-abertas
+
+<img width="1014" height="813" alt="image" src="https://github.com/user-attachments/assets/ac2c87ab-abef-4b49-a873-00f3c6fff92d" />
 
 
 ## Compilação
