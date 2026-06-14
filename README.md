@@ -32,7 +32,9 @@ O arquivo [`PROMPTS.md`](PROMPTS.md) contém os prompts utilizados durante o des
 
 <img width="1273" height="712" alt="image" src="https://github.com/user-attachments/assets/f7a75b46-51c9-4d01-b8fb-12ef79a695c3" />
 
+## Vídeo
 
+https://drive.google.com/file/d/1FXKXMqFqBsQiGiyu4fxYPhIzHbkiAHFO/view?usp=sharing
 
 ## Controles
 
